@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=AI价格比对－一键发布
+Comment=自动选择最新价格备份并发布到 Surge
+Exec=/home/zhuxi/AI价格比对工具/scripts/一键发布.sh
+Icon=system-software-update
+Terminal=true
+Categories=Development;
+StartupNotify=true

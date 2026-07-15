@@ -1,0 +1,1687 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 价格比对</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --primary-soft: #eff6ff;
+      --danger: #dc2626;
+      --danger-dark: #b91c1c;
+      --text: #172033;
+      --muted: #64748b;
+      --border: #dbe3ef;
+      --surface: #ffffff;
+      --background: #f1f5f9;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.07);
+      --header-height: 78px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { color-scheme: light; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      color: var(--text);
+      background: var(--background);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.5;
+    }
+
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+
+    .topbar {
+      position: fixed;
+      inset: 0 0 auto 0;
+      z-index: 100;
+      min-height: var(--header-height);
+      background: rgba(255, 255, 255, 0.96);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 3px 14px rgba(15, 23, 42, 0.06);
+      backdrop-filter: blur(10px);
+    }
+
+    .topbar-inner {
+      width: min(1480px, calc(100% - 40px));
+      min-height: var(--header-height);
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand {
+      flex: 0 0 auto;
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+    }
+
+    .record-count {
+      display: none;
+      flex: 0 0 auto;
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .record-count.visible { display: inline; }
+
+    .search-wrap {
+      position: relative;
+      flex: 1 1 380px;
+      max-width: 560px;
+      margin-left: auto;
+    }
+
+    .search-input {
+      width: 100%;
+      height: 42px;
+      padding: 0 40px 0 42px;
+      color: var(--text);
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      outline: none;
+      transition: border-color .18s, box-shadow .18s, background .18s;
+    }
+
+    .search-input:focus {
+      background: #fff;
+      border-color: #7aa6f8;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      pointer-events: none;
+    }
+
+    .clear-search {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      width: 28px;
+      height: 28px;
+      transform: translateY(-50%);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      color: var(--muted);
+      background: transparent;
+      border: 0;
+      border-radius: 50%;
+      font-size: 18px;
+    }
+
+    .clear-search.visible { display: flex; }
+    .clear-search:hover { color: var(--text); background: #e9eef6; }
+
+    .toolbar-actions {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn {
+      min-height: 38px;
+      padding: 8px 14px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      font-weight: 600;
+      transition: background .16s, border-color .16s, color .16s, transform .08s;
+    }
+
+    .btn:active { transform: translateY(1px); }
+    .btn:focus-visible { outline: 3px solid rgba(37, 99, 235, .2); outline-offset: 2px; }
+
+    .btn-primary { color: #fff; background: var(--primary); border-color: var(--primary); }
+    .btn-primary:hover { background: var(--primary-dark); border-color: var(--primary-dark); }
+    .btn-secondary { color: #334155; background: #fff; border-color: var(--border); }
+    .btn-secondary:hover { background: #f8fafc; border-color: #b9c6d8; }
+    .btn-danger { color: #fff; background: var(--danger); border-color: var(--danger); }
+    .btn-danger:hover { background: var(--danger-dark); border-color: var(--danger-dark); }
+    .btn-ghost-danger { color: var(--danger); background: #fff; border-color: #fecaca; }
+    .btn-ghost-danger:hover { background: #fef2f2; border-color: #fca5a5; }
+    .btn-small { min-height: 32px; padding: 5px 10px; font-size: 13px; }
+
+    main {
+      width: min(1480px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: calc(var(--header-height) + 28px) 0 48px;
+    }
+
+    .category-list { display: grid; gap: 20px; }
+
+    .empty-state {
+      padding: 80px 24px;
+      text-align: center;
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px dashed #c7d2e1;
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+    }
+
+    .empty-state strong {
+      display: block;
+      margin-bottom: 8px;
+      color: #334155;
+      font-size: 18px;
+    }
+
+    .category-card {
+      overflow: hidden;
+      background: var(--surface);
+      border: 1px solid rgba(219, 227, 239, .9);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      transition: border-color .16s, box-shadow .16s, transform .16s;
+    }
+
+    .category-list.is-dragging .category-card {
+      border-style: dashed;
+    }
+
+    .category-card.drag-over {
+      border-color: var(--primary);
+      border-style: solid !important;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .16), var(--shadow);
+      transform: translateY(-2px);
+    }
+
+    .category-card.drag-over .category-header {
+      background: var(--primary-soft);
+    }
+
+    .category-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-height: 64px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .category-card.collapsed .category-header { border-bottom: 0; }
+
+    .category-toggle {
+      min-width: 0;
+      flex: 1 1 auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 4px;
+      color: var(--text);
+      background: transparent;
+      border: 0;
+      text-align: left;
+      border-radius: 7px;
+    }
+
+    .category-toggle:hover { color: var(--primary); background: #f8fafc; }
+
+    .chevron {
+      flex: 0 0 auto;
+      width: 18px;
+      color: var(--muted);
+      font-size: 15px;
+      text-align: center;
+    }
+
+    .category-title {
+      overflow: hidden;
+      font-size: 18px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .category-count {
+      flex: 0 0 auto;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .category-actions {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .sort-select {
+      min-height: 34px;
+      max-width: 190px;
+      padding: 5px 30px 5px 10px;
+      color: #334155;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      outline: none;
+      font-size: 13px;
+    }
+
+    .sort-select:focus { border-color: #7aa6f8; box-shadow: 0 0 0 3px rgba(37, 99, 235, .1); }
+
+
+    .btn:disabled {
+      cursor: not-allowed;
+      opacity: .48;
+      transform: none;
+    }
+
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      min-width: 1050px;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    th, td {
+      padding: 13px 16px;
+      border-bottom: 1px solid #e8edf4;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th {
+      color: #475569;
+      background: #f8fafc;
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    tbody tr:nth-child(even) { background: #fbfdff; }
+    tbody tr:hover { background: var(--primary-soft); }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr.dragging { opacity: .42; background: #dbeafe; }
+
+    .model-cell { width: 17%; font-weight: 650; word-break: break-word; }
+    .provider-cell { width: 12%; word-break: break-word; }
+    .provider-content { display: grid; gap: 4px; }
+    .relay-address {
+      display: block;
+      overflow: hidden;
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 500;
+      text-decoration: none;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .relay-address:hover { color: var(--primary-dark); text-decoration: underline; }
+    .relay-address:focus-visible { outline: 2px solid rgba(37, 99, 235, .35); outline-offset: 2px; }
+    .multiplier-cell { width: 18%; }
+    .price-cell { width: 12%; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .action-cell { width: 17%; white-space: nowrap; }
+
+    .model-content { display: flex; align-items: center; gap: 9px; }
+    .drag-handle {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 28px;
+      color: #94a3b8;
+      border-radius: 6px;
+      cursor: grab;
+      font-size: 18px;
+      line-height: 1;
+      user-select: none;
+    }
+    .drag-handle:hover { color: var(--primary); background: #dbeafe; }
+    .drag-handle:active { cursor: grabbing; }
+    .drag-handle:focus-visible { color: var(--primary); outline: 2px solid rgba(37, 99, 235, .35); outline-offset: 1px; }
+
+    .inline-multiplier-editor {
+      min-width: 200px;
+      display: grid;
+      grid-template-columns: auto minmax(64px, 1fr) auto;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .inline-multiplier-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .inline-multiplier-toggle input {
+      width: 15px;
+      height: 15px;
+      margin: 0;
+      accent-color: var(--primary);
+    }
+
+    .inline-multiplier-input-wrap { position: relative; }
+
+    .inline-multiplier-prefix {
+      position: absolute;
+      left: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      pointer-events: none;
+    }
+
+    .inline-multiplier-input {
+      width: 100%;
+      height: 32px;
+      padding: 4px 6px 4px 22px;
+      color: var(--text);
+      background: #fff;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      outline: none;
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .inline-multiplier-input:focus {
+      border-color: #7aa6f8;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .1);
+    }
+
+    .inline-multiplier-input:disabled {
+      color: #94a3b8;
+      background: #f1f5f9;
+      cursor: not-allowed;
+    }
+
+    .inline-multiplier-input.invalid {
+      border-color: #ef4444;
+      box-shadow: 0 0 0 3px rgba(239, 68, 68, .1);
+    }
+
+    .price-value { color: #0f172a; font-weight: 700; }
+    .multiplier-note { margin-left: 5px; color: var(--muted); font-size: 12px; font-weight: 500; }
+    .row-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+
+    .modal-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 22px;
+      background: rgba(15, 23, 42, .54);
+      overflow-y: auto;
+    }
+
+    .modal-layer.open { display: flex; }
+    .modal-layer.secondary { z-index: 1100; background: rgba(15, 23, 42, .35); }
+
+    .modal {
+      width: min(620px, 100%);
+      max-height: calc(100vh - 44px);
+      overflow-y: auto;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 24px 70px rgba(15, 23, 42, .28);
+      animation: modal-in .16s ease-out;
+    }
+
+    .modal.compact { width: min(440px, 100%); }
+
+    @keyframes modal-in {
+      from { opacity: 0; transform: translateY(8px) scale(.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .modal-header {
+      padding: 20px 22px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .modal-title { margin: 0; font-size: 20px; }
+    .modal-body { padding: 20px 22px; }
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 14px 22px 20px;
+    }
+
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-group { min-width: 0; }
+    .form-group.full { grid-column: 1 / -1; }
+
+    .form-label {
+      display: block;
+      margin-bottom: 7px;
+      color: #334155;
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .required { color: var(--danger); }
+
+    .form-control {
+      width: 100%;
+      height: 42px;
+      padding: 9px 11px;
+      color: var(--text);
+      background: #fff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      outline: none;
+      transition: border-color .16s, box-shadow .16s;
+    }
+
+    .form-control:focus { border-color: #7aa6f8; box-shadow: 0 0 0 3px rgba(37, 99, 235, .11); }
+
+    .category-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+
+    .checkbox-row {
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: #334155;
+      font-weight: 600;
+      user-select: none;
+    }
+
+    .checkbox-row input { width: 17px; height: 17px; accent-color: var(--primary); }
+
+    .unit-input { position: relative; }
+    .unit-input .form-control { padding-right: 112px; }
+    .unit {
+      position: absolute;
+      right: 11px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 12px;
+      pointer-events: none;
+    }
+
+    .form-error {
+      display: none;
+      margin: 16px 0 0;
+      padding: 10px 12px;
+      color: var(--danger-dark);
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    .form-error.visible { display: block; }
+
+    .dialog-message { margin: 0; color: #475569; white-space: pre-line; }
+    .dialog-input { margin-top: 16px; }
+
+    .toast-wrap {
+      position: fixed;
+      z-index: 2000;
+      right: 20px;
+      bottom: 20px;
+      display: grid;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .toast {
+      min-width: 220px;
+      max-width: 380px;
+      padding: 12px 15px;
+      color: #fff;
+      background: #0f172a;
+      border-radius: 9px;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, .24);
+      animation: toast-in .2s ease-out;
+    }
+
+    .toast.error { background: var(--danger-dark); }
+
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 1080px) {
+      :root { --header-height: 128px; }
+      .topbar-inner { flex-wrap: wrap; align-content: center; padding: 12px 0; gap: 10px; }
+      .brand { font-size: 21px; }
+      .search-wrap { order: 3; flex-basis: 100%; max-width: none; margin-left: 0; }
+      .toolbar-actions { margin-left: auto; }
+      .category-header { align-items: flex-start; flex-wrap: wrap; }
+      .category-actions { width: 100%; padding-left: 31px; flex-wrap: wrap; }
+    }
+
+    @media (max-width: 760px) {
+      :root { --header-height: 184px; }
+      .topbar-inner, main { width: min(100% - 24px, 1480px); }
+      .brand { width: 100%; }
+      .record-count { margin-left: auto; }
+      .toolbar-actions { width: 100%; margin-left: 0; }
+      .toolbar-actions .btn { flex: 1; padding-inline: 8px; font-size: 13px; }
+      main { padding-bottom: 28px; }
+      .category-header { padding: 10px 11px; }
+      .category-actions { padding-left: 0; }
+      .sort-select { flex: 1 1 170px; max-width: none; }
+      th, td { padding: 11px 12px; }
+      table { min-width: 820px; }
+      .cache-column { display: none; }
+      .form-grid { grid-template-columns: 1fr; }
+      .form-group.full { grid-column: auto; }
+      .modal-layer { padding: 12px; }
+      .modal { max-height: calc(100vh - 24px); }
+    }
+
+    @media (max-width: 430px) {
+      :root { --header-height: 224px; }
+      .toolbar-actions { display: grid; grid-template-columns: 1fr 1fr; }
+      .toolbar-actions .btn-primary { grid-column: 1 / -1; }
+      .category-actions .btn { flex: 1; }
+      .modal-header, .modal-body { padding-left: 16px; padding-right: 16px; }
+      .modal-footer { padding-left: 16px; padding-right: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <h1 class="brand">AI 价格比对</h1>
+      <span id="recordCount" class="record-count"></span>
+
+      <div class="search-wrap">
+        <span class="search-icon" aria-hidden="true">⌕</span>
+        <input id="searchInput" class="search-input" type="search" autocomplete="off" placeholder="搜索模型名称、中转站或地址">
+        <button id="clearSearch" class="clear-search" type="button" aria-label="清空搜索">×</button>
+      </div>
+
+      <div class="toolbar-actions">
+        <button id="exportButton" class="btn btn-secondary" type="button">导出 JSON</button>
+        <button id="importButton" class="btn btn-secondary" type="button">导入 JSON</button>
+        <button id="addButton" class="btn btn-primary" type="button">＋ 添加条目</button>
+      </div>
+      <input id="fileInput" type="file" accept=".json,application/json" hidden>
+    </div>
+  </header>
+
+  <main>
+    <section id="categoryList" class="category-list" aria-live="polite"></section>
+  </main>
+
+  <div id="entryModalLayer" class="modal-layer" aria-hidden="true">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="entryModalTitle">
+      <div class="modal-header">
+        <h2 id="entryModalTitle" class="modal-title">添加条目</h2>
+      </div>
+      <form id="entryForm" novalidate>
+        <div class="modal-body">
+          <input id="entryId" type="hidden">
+          <div class="form-grid">
+            <div class="form-group full">
+              <label class="form-label" for="modelName">模型名称 <span class="required">*</span></label>
+              <input id="modelName" class="form-control" type="text" maxlength="160" placeholder="如 gpt-4o-2024-08-06" autocomplete="off">
+            </div>
+
+            <div class="form-group full">
+              <label class="form-label" for="categorySelect">分类 <span class="required">*</span></label>
+              <div class="category-field">
+                <select id="categorySelect" class="form-control"></select>
+                <button id="newCategoryButton" class="btn btn-secondary" type="button">＋ 新建分类</button>
+              </div>
+            </div>
+
+            <div class="form-group full">
+              <label class="form-label" for="provider">中转站 <span class="required">*</span></label>
+              <input id="provider" class="form-control" type="text" maxlength="160" placeholder="如 云智AI" autocomplete="off">
+            </div>
+
+            <div class="form-group full">
+              <label class="form-label" for="relayAddress">中转站网站地址</label>
+              <input id="relayAddress" class="form-control" type="url" maxlength="2048" placeholder="如 https://example.com/register" autocomplete="url">
+            </div>
+
+            <div class="form-group full">
+              <label class="checkbox-row" for="useMultiplier">
+                <input id="useMultiplier" type="checkbox">
+                启用倍率
+              </label>
+            </div>
+
+            <div id="multiplierGroup" class="form-group full" hidden>
+              <label class="form-label" for="multiplier">倍率 <span class="required">*</span></label>
+              <input id="multiplier" class="form-control" type="number" min="0" step="any" inputmode="decimal" placeholder="如 2.0">
+            </div>
+
+            <div class="form-group">
+              <label id="inputPriceLabel" class="form-label" for="baseInputPrice">输入价格 <span class="required">*</span></label>
+              <div class="unit-input">
+                <input id="baseInputPrice" class="form-control" type="number" min="0" step="any" inputmode="decimal" placeholder="如 15">
+                <span class="unit">元/1M tokens</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label id="cachePriceLabel" class="form-label" for="baseCacheInputPrice">缓存输入价格 <span class="required">*</span></label>
+              <div class="unit-input">
+                <input id="baseCacheInputPrice" class="form-control" type="number" min="0" step="any" inputmode="decimal" placeholder="如 7.5">
+                <span class="unit">元/1M tokens</span>
+              </div>
+            </div>
+
+            <div class="form-group full">
+              <label id="outputPriceLabel" class="form-label" for="baseOutputPrice">输出价格 <span class="required">*</span></label>
+              <div class="unit-input">
+                <input id="baseOutputPrice" class="form-control" type="number" min="0" step="any" inputmode="decimal" placeholder="如 60">
+                <span class="unit">元/1M tokens</span>
+              </div>
+            </div>
+          </div>
+          <p id="entryError" class="form-error" role="alert"></p>
+        </div>
+        <div class="modal-footer">
+          <button id="cancelEntryButton" class="btn btn-secondary" type="button">取消</button>
+          <button class="btn btn-primary" type="submit">保存</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div id="dialogLayer" class="modal-layer secondary" aria-hidden="true">
+    <section class="modal compact" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+      <div class="modal-header">
+        <h2 id="dialogTitle" class="modal-title">确认操作</h2>
+      </div>
+      <div class="modal-body">
+        <p id="dialogMessage" class="dialog-message"></p>
+        <input id="dialogInput" class="form-control dialog-input" type="text" maxlength="160" autocomplete="off" hidden>
+        <p id="dialogError" class="form-error" role="alert"></p>
+      </div>
+      <div class="modal-footer">
+        <button id="dialogCancel" class="btn btn-secondary" type="button">取消</button>
+        <button id="dialogConfirm" class="btn btn-primary" type="button">确定</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="toastWrap" class="toast-wrap" aria-live="polite"></div>
+
+  <script>
+    'use strict';
+
+    const STORAGE_KEY = 'ai-price-compare-data';
+    const PUBLISHED_DATA_KEY = 'ai-price-compare-published-data';
+    const PUBLISHED_DATA = {"exportedAt":"2026-07-15T00:58:06.740Z","version":2,"entries":[{"id":"1783943380371-d0et2ds5","modelName":"GPT 5.6 sol","category":"GPT 5.6低档区","provider":"Cat.ai","useMultiplier":true,"multiplier":0.08,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783943380371,"updatedAt":1784001226123,"relayAddress":"https://aicat.sumnece.com/register?aff=EP28S95FCZHL"},{"id":"1783943535926-a5jlbbtr","modelName":"GPT 5.6 sol","category":"GPT 5.6 高档区","provider":"niko","useMultiplier":true,"multiplier":0.1,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783943535926,"updatedAt":1783991530636,"relayAddress":"https://nikoapi.xyz/sign-up?aff=2ztj"},{"id":"1783943717451-jikvxmst","modelName":"GPT 5.6 sol","category":"GPT 5.6 高档区","provider":"可乐AI","useMultiplier":true,"multiplier":0.25,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783943717451,"updatedAt":1783991574948,"relayAddress":"https://code28.ccwu.cc/sign-up?aff=HKEx"},{"id":"1783943785395-g98l2prd","modelName":"GPT 5.6 sol","category":"GPT 5.6低档区","provider":"可乐AI","useMultiplier":true,"multiplier":0.03,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783943785395,"updatedAt":1783991579028,"relayAddress":"https://code28.ccwu.cc/sign-up?aff=HKEx"},{"id":"1783946203732-rg1zbvu7","modelName":"GPT 5.6 sol pro","category":"GPT 5.6 高档区","provider":"RenRen AI","useMultiplier":true,"multiplier":0.25,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783946203732,"updatedAt":1784006466257,"relayAddress":"https://renai.uno/register?aff=AD65Z2KCCCTV"},{"id":"1783946256644-ujl9fvhr","modelName":"GPT 5.6 sol","category":"GPT 5.6 高档区","provider":"Cat.ai","useMultiplier":true,"multiplier":0.15,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783946256644,"updatedAt":1783991592020,"relayAddress":"https://aicat.sumnece.com/register?aff=EP28S95FCZHL"},{"id":"1783957250597-4690o5e4","modelName":"GPT 5.6 sol","category":"GPT 5.6低档区","provider":"SRAPI","useMultiplier":true,"multiplier":0.06,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783957250597,"updatedAt":1783992021869,"relayAddress":"https://zz.aiapi2025.top/dashboard"},{"id":"1783957273524-2gm4xlk0","modelName":"GPT 5.6 sol","category":"GPT 5.6 高档区","provider":"wahuilyi","useMultiplier":true,"multiplier":0.25,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783957273524,"updatedAt":1784035089982,"relayAddress":"https://api2.wahuiliyi.cn/register?aff=L2DKJV7CSG2B"},{"id":"1783961953091-szy7uqiy","modelName":"GPT 5.6 sol","category":"GPT 5.6低档区","provider":"VIP站 1：15充值（价格稳定）","useMultiplier":true,"multiplier":0.06667,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783961953091,"updatedAt":1784076964847,"relayAddress":"https://vip.j3gb.com/register?aff=CULWQMPXJTDP"},{"id":"1783962381040-xmfs3lnd","modelName":"GPT 5.6 sol","category":"GPT 5.6低档区","provider":"DoCode 1：12充值（价格稳定）","useMultiplier":true,"multiplier":0.083,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783962381040,"updatedAt":1783991882309,"relayAddress":"https://cc-vibe.com/register?aff=C6QZZCK955WR"},{"id":"1783962682852-xlc6hdf3","modelName":"GPT 5.6 sol","category":"GPT 5.6 高档区","provider":"DoCode","useMultiplier":true,"multiplier":0.24,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783962682852,"updatedAt":1783991848524,"relayAddress":"https://docode.cc/register?aff=oQRw"},{"id":"1783965096760-txeuuyk1","modelName":"GPT 5.6 sol","category":"GPT 5.6低档区","provider":"wahuiliyi","useMultiplier":true,"multiplier":0.014,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783965096760,"updatedAt":1784076274069,"relayAddress":"https://api2.wahuiliyi.cn/register?aff=L2DKJV7CSG2B"},{"id":"1783989272738-8mk6nu0v","modelName":"GPT 5.6 sol","category":"GPT 5.6低档区","provider":"aicodelink","useMultiplier":true,"multiplier":0.08,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783989272738,"updatedAt":1783991769140,"relayAddress":"https://aicodelink.top/sign-up?aff=JBUN"},{"id":"1783989300042-hoh1itpc","modelName":"GPT 5.6 sol","category":"GPT 5.6 高档区","provider":"aicodelink","useMultiplier":true,"multiplier":0.25,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783989300042,"updatedAt":1783991767108,"relayAddress":"https://aicodelink.top/sign-up?aff=JBUN"},{"id":"1783991426645-evhcwz8m","modelName":"GPT 5.6 sol","category":"GPT 5.6低档区","provider":"niko","relayAddress":"https://nikoapi.xyz/sign-up?aff=2ztj","useMultiplier":true,"multiplier":0.025,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783991426645,"updatedAt":1784009285173},{"id":"1783991707620-ex4wio5r","modelName":"GPT 5.6 sol 这个是KT的，推理不太过关","category":"GPT 5.6低档区","provider":"RenRen AI","relayAddress":"https://renai.uno/register?aff=AD65Z2KCCCTV","useMultiplier":true,"multiplier":0.03,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783991707620,"updatedAt":1783991707620},{"id":"1783991728052-ygm657kv","modelName":"GPT 5.6 sol","category":"GPT 5.6低档区","provider":"RenRen AI","relayAddress":"https://renai.uno/register?aff=AD65Z2KCCCTV","useMultiplier":true,"multiplier":0.08,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783991728052,"updatedAt":1783991728052},{"id":"1783992071566-vp7prlrr","modelName":"GPT 5.6 sol","category":"GPT 5.6 高档区","provider":"SRAPI","relayAddress":"https://zz.aiapi2025.top/dashboard","useMultiplier":true,"multiplier":0.3,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1783992071566,"updatedAt":1783992097318},{"id":"1784006458880-fudv5nah","modelName":"GPT 5.6 sol MAX","category":"GPT 5.6 高档区","provider":"RenRen AI","relayAddress":"https://renai.uno/register?aff=AD65Z2KCCCTV","useMultiplier":true,"multiplier":0.5,"baseInputPrice":5,"baseCacheInputPrice":6.25,"baseOutputPrice":30,"createdAt":1784006458880,"updatedAt":1784006473718},{"id":"1784074312270-qsl9juvv","modelName":"Claude Fable 5","category":"Claude Fable 5 Kiro","provider":"RenRen","relayAddress":"https://renai.uno/register?aff=AD65Z2KCCCTV","useMultiplier":true,"multiplier":0.2,"baseInputPrice":10,"baseCacheInputPrice":12.5,"baseOutputPrice":50,"createdAt":1784074312270,"updatedAt":1784076414731},{"id":"1784074355843-t71n1mpo","modelName":"Claude Fable 5","category":"Claude Fable 5 Kiro","provider":"wahuiliyi","relayAddress":"https://api2.wahuiliyi.cn/register?aff=L2DKJV7CSG2B","useMultiplier":true,"multiplier":0.12,"baseInputPrice":10,"baseCacheInputPrice":12.5,"baseOutputPrice":50,"createdAt":1784074355843,"updatedAt":1784074371277},{"id":"1784074393582-0apyugtb","modelName":"Claude Fable 5","category":"Claude Fable 5 Kiro","provider":"Catai","relayAddress":"https://aicat.sumnece.com/register?aff=EP28S95FCZHL","useMultiplier":true,"multiplier":0.15,"baseInputPrice":10,"baseCacheInputPrice":12.5,"baseOutputPrice":50,"createdAt":1784074393582,"updatedAt":1784076588767},{"id":"1784075877323-7e2t9wlw","modelName":"Claude Fable 5","category":"Claude Fable 5 Kiro","provider":"NikoAPI","relayAddress":"https://nikoapi.xyz/sign-up?aff=2ztj","useMultiplier":true,"multiplier":0.1,"baseInputPrice":10,"baseCacheInputPrice":12.5,"baseOutputPrice":50,"createdAt":1784075877323,"updatedAt":1784076400416},{"id":"1784075902316-rqbgmstk","modelName":"Claude Fable 5","category":"Claude Fable 5 Kiro","provider":"VIP站 1：15充值（价格稳定）","relayAddress":"https://vip.j3gb.com/register?aff=CULWQMPXJTDP","useMultiplier":true,"multiplier":0.067,"baseInputPrice":10,"baseCacheInputPrice":12.5,"baseOutputPrice":50,"createdAt":1784075902316,"updatedAt":1784076613216},{"id":"1784075936979-ebwiahvf","modelName":"Claude Fable 5","category":"Claude Fable 5 Kiro","provider":"可乐AI","relayAddress":"https://code28.ccwu.cc/sign-up?aff=HKEx","useMultiplier":true,"multiplier":0.25,"baseInputPrice":10,"baseCacheInputPrice":12.5,"baseOutputPrice":50,"createdAt":1784075936979,"updatedAt":1784076385487},{"id":"1784076015176-k6fczugj","modelName":"Claude Fable 5 （只允许Claude使用）","category":"Claude Fable 5 MAX","provider":"wahuiliyi","relayAddress":"https://api2.wahuiliyi.cn/register?aff=L2DKJV7CSG2B","useMultiplier":true,"multiplier":0.75,"baseInputPrice":10,"baseCacheInputPrice":12.5,"baseOutputPrice":50,"createdAt":1784076015176,"updatedAt":1784076015176},{"id":"1784076050933-4jf9rcsc","modelName":"Claude Fable 5","category":"Claude Fable 5 MAX","provider":"Cat站","relayAddress":"https://aicat.sumnece.com/register?aff=EP28S95FCZHL","useMultiplier":true,"multiplier":0.95,"baseInputPrice":10,"baseCacheInputPrice":12.5,"baseOutputPrice":50,"createdAt":1784076050933,"updatedAt":1784076586382},{"id":"1784076095395-h5ou4f88","modelName":"Claude Fable 5 （只允许Claude使用）","category":"Claude Fable 5 MAX","provider":"Sub2API","relayAddress":"https://zz.aiapi2025.top/dashboard","useMultiplier":true,"multiplier":1,"baseInputPrice":10,"baseCacheInputPrice":12.5,"baseOutputPrice":50,"createdAt":1784076095395,"updatedAt":1784076488818},{"id":"1784076122302-xfutzetm","modelName":"Claude Fable 5","category":"Claude Fable 5 MAX","provider":"Niko","relayAddress":"https://nikoapi.xyz/sign-up?aff=2ztj","useMultiplier":true,"multiplier":0.8,"baseInputPrice":10,"baseCacheInputPrice":12.5,"baseOutputPrice":50,"createdAt":1784076122302,"updatedAt":1784076397223},{"id":"1784076153017-nmchsyv7","modelName":"Claude Fable 5","category":"Claude Fable 5 MAX","provider":"可乐AI","relayAddress":"https://code28.ccwu.cc/sign-up?aff=HKEx","useMultiplier":true,"multiplier":0.95,"baseInputPrice":10,"baseCacheInputPrice":12.5,"baseOutputPrice":50,"createdAt":1784076153017,"updatedAt":1784076387613},{"id":"1784076473798-4u7d534n","modelName":"Claude Fable 5 （只允许Claude使用）","category":"Claude Fable 5 MAX","provider":"RenRen","relayAddress":"https://renai.uno/register?aff=AD65Z2KCCCTV","useMultiplier":true,"multiplier":1,"baseInputPrice":10,"baseCacheInputPrice":12.5,"baseOutputPrice":50,"createdAt":1784076473798,"updatedAt":1784076490227},{"id":"1784076563614-l78domk5","modelName":"Claude Fable 5","category":"Claude Fable 5 Kiro","provider":"Sub2API","relayAddress":"https://zz.aiapi2025.top/dashboard","useMultiplier":true,"multiplier":0.09,"baseInputPrice":10,"baseCacheInputPrice":12.5,"baseOutputPrice":50,"createdAt":1784076563614,"updatedAt":1784076569040},{"id":"1784076763196-ymrttbfo","modelName":"Claude Fable 5 (非1M的)","category":"Claude Fable 5 Kiro","provider":"CCVIbe 1:12充值","relayAddress":"https://cc-vibe.com/keys","useMultiplier":true,"multiplier":0.083333,"baseInputPrice":10,"baseCacheInputPrice":12.5,"baseOutputPrice":50,"createdAt":1784076763196,"updatedAt":1784076886716},{"id":"1784076866551-5pubagrk","modelName":"Claude Fable 5","category":"Claude Fable 5 MAX","provider":"CCVIbe 1:12充值","relayAddress":"https://cc-vibe.com/keys","useMultiplier":true,"multiplier":1.83,"baseInputPrice":10,"baseCacheInputPrice":12.5,"baseOutputPrice":50,"createdAt":1784076866551,"updatedAt":1784076866551},{"id":"1784076912606-1zeq1mv7","modelName":"Claude Fable 5","category":"Claude Fable 5 Kiro","provider":"CCVIbe 1:12充值","relayAddress":"https://cc-vibe.com/keys","useMultiplier":true,"multiplier":0.25,"baseInputPrice":10,"baseCacheInputPrice":12.5,"baseOutputPrice":50,"createdAt":1784076912606,"updatedAt":1784076912606}]}; // __PUBLISHED_DATA__
+    const REQUIRED_ENTRY_KEYS = [
+      'id', 'modelName', 'category', 'provider', 'useMultiplier', 'multiplier',
+      'baseInputPrice', 'baseCacheInputPrice', 'baseOutputPrice', 'createdAt', 'updatedAt'
+    ];
+
+    let entries = [];
+    const state = {
+      searchTerm: '',
+      sortByCategory: new Map(),
+      collapsedCategories: new Set(),
+      modalCategories: [],
+      entryModalMode: 'add',
+      draggedEntryId: null
+    };
+
+    const elements = {
+      categoryList: document.getElementById('categoryList'),
+      recordCount: document.getElementById('recordCount'),
+      searchInput: document.getElementById('searchInput'),
+      clearSearch: document.getElementById('clearSearch'),
+      addButton: document.getElementById('addButton'),
+      exportButton: document.getElementById('exportButton'),
+      importButton: document.getElementById('importButton'),
+      fileInput: document.getElementById('fileInput'),
+      entryModalLayer: document.getElementById('entryModalLayer'),
+      entryModalTitle: document.getElementById('entryModalTitle'),
+      entryForm: document.getElementById('entryForm'),
+      entryId: document.getElementById('entryId'),
+      modelName: document.getElementById('modelName'),
+      categorySelect: document.getElementById('categorySelect'),
+      newCategoryButton: document.getElementById('newCategoryButton'),
+      provider: document.getElementById('provider'),
+      relayAddress: document.getElementById('relayAddress'),
+      useMultiplier: document.getElementById('useMultiplier'),
+      multiplierGroup: document.getElementById('multiplierGroup'),
+      multiplier: document.getElementById('multiplier'),
+      baseInputPrice: document.getElementById('baseInputPrice'),
+      baseCacheInputPrice: document.getElementById('baseCacheInputPrice'),
+      baseOutputPrice: document.getElementById('baseOutputPrice'),
+      inputPriceLabel: document.getElementById('inputPriceLabel'),
+      cachePriceLabel: document.getElementById('cachePriceLabel'),
+      outputPriceLabel: document.getElementById('outputPriceLabel'),
+      entryError: document.getElementById('entryError'),
+      cancelEntryButton: document.getElementById('cancelEntryButton'),
+      dialogLayer: document.getElementById('dialogLayer'),
+      dialogTitle: document.getElementById('dialogTitle'),
+      dialogMessage: document.getElementById('dialogMessage'),
+      dialogInput: document.getElementById('dialogInput'),
+      dialogError: document.getElementById('dialogError'),
+      dialogCancel: document.getElementById('dialogCancel'),
+      dialogConfirm: document.getElementById('dialogConfirm'),
+      toastWrap: document.getElementById('toastWrap')
+    };
+
+    function loadEntries() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (isValidImport(PUBLISHED_DATA)) {
+          const publishedId = `${PUBLISHED_DATA.version}:${PUBLISHED_DATA.exportedAt}`;
+          const appliedPublishedId = localStorage.getItem(PUBLISHED_DATA_KEY);
+          if (appliedPublishedId !== publishedId) {
+            const publishedEntries = PUBLISHED_DATA.entries.map(entry => ({ ...entry }));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(publishedEntries));
+            localStorage.setItem(PUBLISHED_DATA_KEY, publishedId);
+            return publishedEntries;
+          }
+        }
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.filter(isValidEntry) : [];
+      } catch (error) {
+        showToast('本地数据读取失败，已使用空数据启动', true);
+        return [];
+      }
+    }
+
+    function saveEntries() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+        return true;
+      } catch (error) {
+        showToast('保存失败：浏览器存储空间不可用', true);
+        return false;
+      }
+    }
+
+    function createEntry(data) {
+      const now = Date.now();
+      const entry = {
+        id: generateId(),
+        modelName: data.modelName,
+        category: data.category,
+        provider: data.provider,
+        relayAddress: data.relayAddress,
+        useMultiplier: data.useMultiplier,
+        multiplier: data.useMultiplier ? data.multiplier : null,
+        baseInputPrice: data.baseInputPrice,
+        baseCacheInputPrice: data.baseCacheInputPrice,
+        baseOutputPrice: data.baseOutputPrice,
+        createdAt: now,
+        updatedAt: now
+      };
+      entries.push(entry);
+      persistAndRender();
+      return entry;
+    }
+
+    function updateEntry(id, data) {
+      const index = entries.findIndex(entry => entry.id === id);
+      if (index === -1) return false;
+      entries[index] = {
+        ...entries[index],
+        ...data,
+        multiplier: data.useMultiplier ? data.multiplier : null,
+        updatedAt: Date.now()
+      };
+      persistAndRender();
+      return true;
+    }
+
+    function deleteEntry(id) {
+      const nextEntries = entries.filter(entry => entry.id !== id);
+      if (nextEntries.length === entries.length) return false;
+      entries = nextEntries;
+      persistAndRender();
+      return true;
+    }
+
+    function moveEntry(id, targetCategory) {
+      const index = entries.findIndex(entry => entry.id === id);
+      if (index === -1 || entries[index].category === targetCategory) return false;
+      entries[index] = {
+        ...entries[index],
+        category: targetCategory,
+        updatedAt: Date.now()
+      };
+      persistAndRender();
+      return true;
+    }
+
+
+    function updateEntryMultiplier(id, useMultiplier, multiplier) {
+      const index = entries.findIndex(entry => entry.id === id);
+      if (index === -1) return false;
+      entries[index] = {
+        ...entries[index],
+        useMultiplier,
+        multiplier: useMultiplier ? multiplier : null,
+        updatedAt: Date.now()
+      };
+      persistAndRender();
+      return true;
+    }
+
+    function renameCategory(oldName, newName) {
+      const now = Date.now();
+      let changed = false;
+      entries = entries.map(entry => {
+        if (entry.category !== oldName) return entry;
+        changed = true;
+        return { ...entry, category: newName, updatedAt: now };
+      });
+      if (!changed) return false;
+
+      if (state.sortByCategory.has(oldName) && !state.sortByCategory.has(newName)) {
+        state.sortByCategory.set(newName, state.sortByCategory.get(oldName));
+      }
+      state.sortByCategory.delete(oldName);
+      if (state.collapsedCategories.has(oldName)) {
+        state.collapsedCategories.delete(oldName);
+        state.collapsedCategories.add(newName);
+      }
+      persistAndRender();
+      return true;
+    }
+
+    function deleteCategory(category) {
+      const before = entries.length;
+      entries = entries.filter(entry => entry.category !== category);
+      if (entries.length === before) return false;
+      state.sortByCategory.delete(category);
+      state.collapsedCategories.delete(category);
+      persistAndRender();
+      return true;
+    }
+
+    function persistAndRender() {
+      saveEntries();
+      render();
+    }
+
+    function generateId() {
+      return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+
+    function getCategories(source = entries) {
+      return [...new Set(source.map(entry => entry.category))]
+        .sort((a, b) => a.localeCompare(b, 'zh-CN'));
+    }
+
+    function actualPrice(entry, field) {
+      const base = Number(entry[field]);
+      return entry.useMultiplier ? base * Number(entry.multiplier) : base;
+    }
+
+    function formatPrice(value) {
+      if (!Number.isFinite(value)) return '—';
+      return new Intl.NumberFormat('zh-CN', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2
+      }).format(value);
+    }
+
+    function formatMultiplier(value) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return '';
+      return Number.isInteger(number) ? number.toFixed(1) : String(Number(number.toFixed(4)));
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function isValidRelayAddress(value) {
+      if (value === undefined || value === '') return true;
+      if (typeof value !== 'string') return false;
+      try {
+        const url = new URL(value);
+        return url.protocol === 'http:' || url.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    }
+
+    function relayAddressMarkup(entry) {
+      const address = typeof entry.relayAddress === 'string' ? entry.relayAddress.trim() : '';
+      if (!address || !isValidRelayAddress(address)) return '';
+      const escapedAddress = escapeHtml(address);
+      return `<a class="relay-address" href="${escapedAddress}" target="_blank" rel="noopener noreferrer" title="${escapedAddress}">${escapedAddress}</a>`;
+    }
+
+    function encoded(value) {
+      return encodeURIComponent(String(value));
+    }
+
+    function priceMarkup(entry, field) {
+      const note = entry.useMultiplier
+        ? `<span class="multiplier-note">(×${escapeHtml(formatMultiplier(entry.multiplier))})</span>`
+        : '';
+      return `<span class="price-value">${formatPrice(actualPrice(entry, field))}</span>${note}`;
+    }
+
+
+    function render() {
+      const term = state.searchTerm.trim().toLocaleLowerCase('zh-CN');
+      const filtered = term
+        ? entries.filter(entry =>
+            entry.modelName.toLocaleLowerCase('zh-CN').includes(term) ||
+            entry.provider.toLocaleLowerCase('zh-CN').includes(term) ||
+            (entry.relayAddress || '').toLocaleLowerCase('zh-CN').includes(term))
+        : entries;
+
+      elements.clearSearch.classList.toggle('visible', Boolean(state.searchTerm));
+      elements.recordCount.textContent = `共 ${entries.length} 条记录`;
+      elements.recordCount.classList.toggle('visible', entries.length > 500);
+
+      if (entries.length === 0) {
+        elements.categoryList.innerHTML = `
+          <div class="empty-state">
+            <strong>还没有价格数据</strong>
+            点击右上角「添加条目」开始录入。
+          </div>`;
+        return;
+      }
+
+      if (filtered.length === 0) {
+        elements.categoryList.innerHTML = `
+          <div class="empty-state">
+            <strong>没有匹配结果</strong>
+            换个模型名称或中转站关键词试试。
+          </div>`;
+        return;
+      }
+
+      const grouped = new Map();
+      filtered.forEach(entry => {
+        if (!grouped.has(entry.category)) grouped.set(entry.category, []);
+        grouped.get(entry.category).push(entry);
+      });
+
+      elements.categoryList.innerHTML = [...grouped.keys()]
+        .sort((a, b) => a.localeCompare(b, 'zh-CN'))
+        .map(category => renderCategory(category, grouped.get(category)))
+        .join('');
+    }
+
+    function renderCategory(category, categoryEntries) {
+      const sortField = state.sortByCategory.get(category) || 'baseOutputPrice';
+      const sortedEntries = [...categoryEntries].sort((a, b) => {
+        const difference = actualPrice(b, sortField) - actualPrice(a, sortField);
+        return difference || a.modelName.localeCompare(b.modelName, 'zh-CN');
+      });
+      const collapsed = state.collapsedCategories.has(category);
+      const categoryKey = encoded(category);
+
+      return `
+        <article class="category-card${collapsed ? ' collapsed' : ''}" data-category="${categoryKey}">
+          <header class="category-header">
+            <button class="category-toggle" type="button" data-action="toggle-category" data-category="${categoryKey}" aria-expanded="${!collapsed}">
+              <span class="chevron" aria-hidden="true">${collapsed ? '▶' : '▼'}</span>
+              <span class="category-title">${escapeHtml(category)}</span>
+              <span class="category-count">（${categoryEntries.length}）</span>
+            </button>
+            <div class="category-actions">
+              <select class="sort-select" data-action="sort-category" data-category="${categoryKey}" aria-label="${escapeHtml(category)}排序方式">
+                <option value="baseOutputPrice"${sortField === 'baseOutputPrice' ? ' selected' : ''}>按输出价格↓</option>
+                <option value="baseInputPrice"${sortField === 'baseInputPrice' ? ' selected' : ''}>按输入价格↓</option>
+                <option value="baseCacheInputPrice"${sortField === 'baseCacheInputPrice' ? ' selected' : ''}>按缓存输入价格↓</option>
+              </select>
+              <button class="btn btn-secondary btn-small" type="button" data-action="edit-category" data-category="${categoryKey}">编辑分类</button>
+              <button class="btn btn-ghost-danger btn-small" type="button" data-action="delete-category" data-category="${categoryKey}">删除分类</button>
+            </div>
+          </header>
+          ${collapsed ? '' : renderTable(sortedEntries)}
+        </article>`;
+    }
+
+    function renderTable(categoryEntries) {
+      const rows = categoryEntries.map(entry => {
+        const entryId = encoded(entry.id);
+        return `
+          <tr data-entry-id="${entryId}">
+            <td class="model-cell">
+              <div class="model-content">
+                <span class="drag-handle" draggable="true" data-drag-entry="${entryId}" title="拖动到其他分类" aria-hidden="true">⠿</span>
+                <span>${escapeHtml(entry.modelName)}</span>
+              </div>
+            </td>
+            <td class="provider-cell">
+              <div class="provider-content">
+                <span>${escapeHtml(entry.provider)}</span>
+                ${relayAddressMarkup(entry)}
+              </div>
+            </td>
+            <td class="multiplier-cell">
+              <div class="inline-multiplier-editor" data-inline-multiplier-editor data-id="${entryId}">
+                <label class="inline-multiplier-toggle" title="是否对本条记录启用倍率">
+                  <input type="checkbox" data-inline-multiplier-enabled${entry.useMultiplier ? ' checked' : ''}>
+                  <span>启用</span>
+                </label>
+                <div class="inline-multiplier-input-wrap">
+                  <span class="inline-multiplier-prefix">×</span>
+                  <input class="inline-multiplier-input" data-inline-multiplier-input type="number" min="0" step="any" inputmode="decimal" value="${entry.useMultiplier ? escapeHtml(entry.multiplier) : ''}" placeholder="倍率" aria-label="${escapeHtml(entry.modelName)}倍率"${entry.useMultiplier ? '' : ' disabled'}>
+                </div>
+                <button class="btn btn-primary btn-small" type="button" data-action="save-entry-multiplier" data-id="${entryId}">保存</button>
+              </div>
+            </td>
+            <td class="price-cell">${priceMarkup(entry, 'baseInputPrice')}</td>
+            <td class="price-cell cache-column">${priceMarkup(entry, 'baseCacheInputPrice')}</td>
+            <td class="price-cell">${priceMarkup(entry, 'baseOutputPrice')}</td>
+            <td class="action-cell">
+              <div class="row-actions">
+                <button class="btn btn-secondary btn-small" type="button" data-action="copy-entry" data-id="${entryId}">拷贝</button>
+                <button class="btn btn-secondary btn-small" type="button" data-action="edit-entry" data-id="${entryId}">编辑</button>
+                <button class="btn btn-ghost-danger btn-small" type="button" data-action="delete-entry" data-id="${entryId}">删除</button>
+              </div>
+            </td>
+          </tr>`;
+      }).join('');
+
+      return `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th class="model-cell">模型名称</th>
+                <th class="provider-cell">中转站</th>
+                <th class="multiplier-cell">倍率（可直接修改）</th>
+                <th class="price-cell">输入价（元/1M tokens）</th>
+                <th class="price-cell cache-column">缓存输入价（元/1M tokens）</th>
+                <th class="price-cell">输出价（元/1M tokens）</th>
+                <th class="action-cell">操作</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    }
+
+    function openEntryModal(entry = null, mode = entry ? 'edit' : 'add') {
+      elements.entryForm.reset();
+      clearEntryError();
+      state.entryModalMode = mode;
+      state.modalCategories = getCategories();
+
+      if (entry && !state.modalCategories.includes(entry.category)) {
+        state.modalCategories.push(entry.category);
+        state.modalCategories.sort((a, b) => a.localeCompare(b, 'zh-CN'));
+      }
+
+      elements.entryModalTitle.textContent = mode === 'copy' ? '拷贝条目' : entry ? '编辑条目' : '添加条目';
+      elements.entryId.value = mode === 'edit' && entry ? entry.id : '';
+      populateCategorySelect(entry ? entry.category : state.modalCategories[0] || '');
+
+      if (entry) {
+        elements.modelName.value = entry.modelName;
+        elements.provider.value = entry.provider;
+        elements.relayAddress.value = entry.relayAddress || '';
+        elements.useMultiplier.checked = entry.useMultiplier;
+        elements.multiplier.value = entry.useMultiplier ? entry.multiplier : '';
+        elements.baseInputPrice.value = entry.baseInputPrice;
+        elements.baseCacheInputPrice.value = entry.baseCacheInputPrice;
+        elements.baseOutputPrice.value = entry.baseOutputPrice;
+      }
+
+      updateMultiplierUI();
+      elements.entryModalLayer.classList.add('open');
+      elements.entryModalLayer.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      setTimeout(() => elements.modelName.focus(), 0);
+    }
+
+    function closeEntryModal() {
+      elements.entryModalLayer.classList.remove('open');
+      elements.entryModalLayer.setAttribute('aria-hidden', 'true');
+      if (!elements.dialogLayer.classList.contains('open')) document.body.style.overflow = '';
+      clearEntryError();
+      state.entryModalMode = 'add';
+    }
+
+    function populateCategorySelect(selectedCategory = '') {
+      if (state.modalCategories.length === 0) {
+        elements.categorySelect.innerHTML = '<option value="">请先新建分类</option>';
+        elements.categorySelect.value = '';
+        return;
+      }
+
+      elements.categorySelect.innerHTML = state.modalCategories
+        .map(category => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`)
+        .join('');
+      elements.categorySelect.value = state.modalCategories.includes(selectedCategory)
+        ? selectedCategory
+        : state.modalCategories[0];
+    }
+
+    function updateMultiplierUI() {
+      const enabled = elements.useMultiplier.checked;
+      elements.multiplierGroup.hidden = !enabled;
+      elements.inputPriceLabel.innerHTML = `${enabled ? '基础输入价格' : '输入价格'} <span class="required">*</span>`;
+      elements.cachePriceLabel.innerHTML = `${enabled ? '基础缓存输入价格' : '缓存输入价格'} <span class="required">*</span>`;
+      elements.outputPriceLabel.innerHTML = `${enabled ? '基础输出价格' : '输出价格'} <span class="required">*</span>`;
+      if (!enabled) elements.multiplier.value = '';
+    }
+
+    function setEntryError(message) {
+      elements.entryError.textContent = message;
+      elements.entryError.classList.add('visible');
+    }
+
+    function clearEntryError() {
+      elements.entryError.textContent = '';
+      elements.entryError.classList.remove('visible');
+    }
+
+    function readEntryForm() {
+      clearEntryError();
+      const modelName = elements.modelName.value.trim();
+      const category = elements.categorySelect.value.trim();
+      const provider = elements.provider.value.trim();
+      const relayAddress = elements.relayAddress.value.trim();
+      const useMultiplier = elements.useMultiplier.checked;
+      const rawMultiplier = elements.multiplier.value.trim();
+      const rawInput = elements.baseInputPrice.value.trim();
+      const rawCache = elements.baseCacheInputPrice.value.trim();
+      const rawOutput = elements.baseOutputPrice.value.trim();
+
+      if (!modelName || !category || !provider || !rawInput || !rawCache || !rawOutput || (useMultiplier && !rawMultiplier)) {
+        setEntryError('请填写所有价格字段');
+        return null;
+      }
+      if (!isValidRelayAddress(relayAddress)) {
+        setEntryError('中转站网站地址必须是有效的 HTTP 或 HTTPS 地址');
+        return null;
+      }
+
+      const multiplier = useMultiplier ? parseFloat(rawMultiplier) : null;
+      const baseInputPrice = parseFloat(rawInput);
+      const baseCacheInputPrice = parseFloat(rawCache);
+      const baseOutputPrice = parseFloat(rawOutput);
+      const numericValues = [baseInputPrice, baseCacheInputPrice, baseOutputPrice];
+      if (useMultiplier) numericValues.push(multiplier);
+
+      if (numericValues.some(value => !Number.isFinite(value))) {
+        setEntryError('价格和倍率必须填写有效数字');
+        return null;
+      }
+      if (baseInputPrice < 0 || baseCacheInputPrice < 0 || baseOutputPrice < 0) {
+        setEntryError('价格不能小于 0');
+        return null;
+      }
+      if (useMultiplier && multiplier <= 0) {
+        setEntryError('倍率必须大于 0');
+        return null;
+      }
+
+      return {
+        modelName,
+        category,
+        provider,
+        relayAddress,
+        useMultiplier,
+        multiplier,
+        baseInputPrice,
+        baseCacheInputPrice,
+        baseOutputPrice
+      };
+    }
+
+    function isValidEntry(entry) {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+      if (!REQUIRED_ENTRY_KEYS.every(key => Object.prototype.hasOwnProperty.call(entry, key))) return false;
+      if (typeof entry.id !== 'string' || entry.id.trim() === '') return false;
+      if (typeof entry.modelName !== 'string' || entry.modelName.trim() === '') return false;
+      if (typeof entry.category !== 'string' || entry.category.trim() === '') return false;
+      if (typeof entry.provider !== 'string' || entry.provider.trim() === '') return false;
+      if (!isValidRelayAddress(entry.relayAddress)) return false;
+      if (typeof entry.useMultiplier !== 'boolean') return false;
+      if (entry.useMultiplier) {
+        if (typeof entry.multiplier !== 'number' || !Number.isFinite(entry.multiplier) || entry.multiplier <= 0) return false;
+      } else if (entry.multiplier !== null) {
+        return false;
+      }
+      if (![entry.baseInputPrice, entry.baseCacheInputPrice, entry.baseOutputPrice]
+        .every(value => typeof value === 'number' && Number.isFinite(value) && value >= 0)) return false;
+      if (typeof entry.createdAt !== 'number' || !Number.isFinite(entry.createdAt)) return false;
+      if (typeof entry.updatedAt !== 'number' || !Number.isFinite(entry.updatedAt)) return false;
+      return true;
+    }
+
+    function isValidImport(data) {
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+      if (![1, 2].includes(data.version) || typeof data.exportedAt !== 'string' || Number.isNaN(Date.parse(data.exportedAt))) return false;
+      if (!Array.isArray(data.entries) || !data.entries.every(isValidEntry)) return false;
+      const ids = data.entries.map(entry => entry.id);
+      return new Set(ids).size === ids.length;
+    }
+
+    function exportData() {
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        version: 2,
+        entries
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const date = new Date();
+      const localDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      link.href = url;
+      link.download = `ai-price-data-${localDate}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      showToast(`已导出 ${entries.length} 条记录`);
+    }
+
+    async function importFile(file) {
+      try {
+        const content = await file.text();
+        const data = JSON.parse(content);
+        if (!isValidImport(data)) throw new Error('invalid format');
+
+        const confirmed = await showConfirm({
+          title: '确认导入',
+          message: `导入将覆盖当前全部 ${entries.length} 条数据，确认继续？`,
+          confirmText: '确认导入',
+          danger: true
+        });
+        if (!confirmed) return;
+
+        entries = data.entries.map(entry => ({ ...entry }));
+        state.sortByCategory.clear();
+        state.collapsedCategories.clear();
+        persistAndRender();
+        showToast(`导入成功，共 ${entries.length} 条记录`);
+      } catch (error) {
+        showAlert('导入失败', '文件格式不符，请选择正确的导出文件');
+      } finally {
+        elements.fileInput.value = '';
+      }
+    }
+
+    let activeDialogResolver = null;
+    let activeDialogMode = 'confirm';
+    let activeDialogValidator = null;
+
+    function openDialog(options) {
+      if (activeDialogResolver) activeDialogResolver(false);
+      activeDialogMode = options.mode || 'confirm';
+      activeDialogValidator = options.validator || null;
+      elements.dialogTitle.textContent = options.title || '确认操作';
+      elements.dialogMessage.textContent = options.message || '';
+      elements.dialogConfirm.textContent = options.confirmText || '确定';
+      elements.dialogCancel.textContent = options.cancelText || '取消';
+      elements.dialogCancel.hidden = activeDialogMode === 'alert';
+      elements.dialogConfirm.className = `btn ${options.danger ? 'btn-danger' : 'btn-primary'}`;
+      elements.dialogInput.hidden = activeDialogMode !== 'input';
+      elements.dialogInput.value = options.defaultValue || '';
+      elements.dialogInput.placeholder = options.placeholder || '';
+      elements.dialogError.textContent = '';
+      elements.dialogError.classList.remove('visible');
+      elements.dialogLayer.classList.add('open');
+      elements.dialogLayer.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+
+      return new Promise(resolve => {
+        activeDialogResolver = resolve;
+        setTimeout(() => {
+          if (activeDialogMode === 'input') {
+            elements.dialogInput.focus();
+            elements.dialogInput.select();
+          } else {
+            elements.dialogConfirm.focus();
+          }
+        }, 0);
+      });
+    }
+
+    function closeDialog(result) {
+      const resolver = activeDialogResolver;
+      activeDialogResolver = null;
+      activeDialogValidator = null;
+      elements.dialogLayer.classList.remove('open');
+      elements.dialogLayer.setAttribute('aria-hidden', 'true');
+      if (!elements.entryModalLayer.classList.contains('open')) document.body.style.overflow = '';
+      if (resolver) resolver(result);
+    }
+
+    function showConfirm(options) {
+      return openDialog({ ...options, mode: 'confirm' });
+    }
+
+    function showAlert(title, message) {
+      return openDialog({ title, message, mode: 'alert', confirmText: '知道了' });
+    }
+
+    function showInput(options) {
+      return openDialog({ ...options, mode: 'input' });
+    }
+
+    function showToast(message, isError = false) {
+      const toast = document.createElement('div');
+      toast.className = `toast${isError ? ' error' : ''}`;
+      toast.textContent = message;
+      elements.toastWrap.appendChild(toast);
+      setTimeout(() => toast.remove(), 2800);
+    }
+
+    elements.searchInput.addEventListener('input', event => {
+      state.searchTerm = event.target.value;
+      render();
+    });
+
+    elements.clearSearch.addEventListener('click', () => {
+      state.searchTerm = '';
+      elements.searchInput.value = '';
+      elements.searchInput.focus();
+      render();
+    });
+
+    elements.addButton.addEventListener('click', () => openEntryModal());
+    elements.cancelEntryButton.addEventListener('click', closeEntryModal);
+    elements.useMultiplier.addEventListener('change', updateMultiplierUI);
+
+    elements.newCategoryButton.addEventListener('click', async () => {
+      const category = await showInput({
+        title: '新建分类',
+        message: '输入新的分类名称：',
+        placeholder: '如 GPT-4o 系列',
+        confirmText: '创建',
+        validator(value) {
+          const trimmed = value.trim();
+          if (!trimmed) return '分类名称不能为空';
+          if (state.modalCategories.includes(trimmed)) return '该分类已存在';
+          return '';
+        }
+      });
+      if (typeof category !== 'string') return;
+      const trimmed = category.trim();
+      state.modalCategories.push(trimmed);
+      state.modalCategories.sort((a, b) => a.localeCompare(b, 'zh-CN'));
+      populateCategorySelect(trimmed);
+    });
+
+    elements.entryForm.addEventListener('submit', event => {
+      event.preventDefault();
+      const data = readEntryForm();
+      if (!data) return;
+
+      const id = elements.entryId.value;
+      if (id) {
+        if (updateEntry(id, data)) showToast('条目已更新');
+      } else {
+        createEntry(data);
+        showToast(state.entryModalMode === 'copy' ? '条目副本已添加' : '条目已添加');
+      }
+      closeEntryModal();
+    });
+
+    elements.categoryList.addEventListener('click', async event => {
+      const target = event.target.closest('[data-action]');
+      if (!target || target.tagName === 'SELECT') return;
+      const action = target.dataset.action;
+
+      if (action === 'toggle-category') {
+        const category = decodeURIComponent(target.dataset.category);
+        if (state.collapsedCategories.has(category)) state.collapsedCategories.delete(category);
+        else state.collapsedCategories.add(category);
+        render();
+        return;
+      }
+
+
+      if (action === 'save-entry-multiplier') {
+        const id = decodeURIComponent(target.dataset.id);
+        const entry = entries.find(item => item.id === id);
+        const editor = target.closest('[data-inline-multiplier-editor]');
+        if (!entry || !editor) return;
+
+        const enabled = editor.querySelector('[data-inline-multiplier-enabled]').checked;
+        const input = editor.querySelector('[data-inline-multiplier-input]');
+        input.classList.remove('invalid');
+        let multiplier = null;
+        if (enabled) {
+          const rawValue = input.value.trim();
+          multiplier = parseFloat(rawValue);
+          if (!rawValue || !Number.isFinite(multiplier) || multiplier <= 0) {
+            input.classList.add('invalid');
+            input.focus();
+            showToast('请输入大于 0 的有效倍率', true);
+            return;
+          }
+        }
+
+        if (updateEntryMultiplier(id, enabled, multiplier)) {
+          showToast(enabled
+            ? `已将「${entry.modelName}」倍率改为 ×${formatMultiplier(multiplier)}`
+            : `已关闭「${entry.modelName}」的倍率`);
+        }
+        return;
+      }
+
+      if (action === 'copy-entry') {
+        const id = decodeURIComponent(target.dataset.id);
+        const entry = entries.find(item => item.id === id);
+        if (entry) openEntryModal(entry, 'copy');
+        return;
+      }
+
+      if (action === 'edit-entry') {
+        const id = decodeURIComponent(target.dataset.id);
+        const entry = entries.find(item => item.id === id);
+        if (entry) openEntryModal(entry, 'edit');
+        return;
+      }
+
+      if (action === 'delete-entry') {
+        const id = decodeURIComponent(target.dataset.id);
+        const entry = entries.find(item => item.id === id);
+        if (!entry) return;
+        const confirmed = await showConfirm({
+          title: '删除记录',
+          message: `确定删除「${entry.modelName} / ${entry.provider}」这条记录？`,
+          confirmText: '删除',
+          danger: true
+        });
+        if (confirmed && deleteEntry(id)) showToast('记录已删除');
+        return;
+      }
+
+      if (action === 'edit-category') {
+        const category = decodeURIComponent(target.dataset.category);
+        const newName = await showInput({
+          title: '编辑分类',
+          message: '修改分类名称。若名称与现有分类相同，两者会合并。',
+          defaultValue: category,
+          confirmText: '保存',
+          validator(value) {
+            return value.trim() ? '' : '分类名称不能为空';
+          }
+        });
+        if (typeof newName !== 'string') return;
+        const trimmed = newName.trim();
+        if (trimmed !== category && renameCategory(category, trimmed)) showToast('分类名称已更新');
+        return;
+      }
+
+      if (action === 'delete-category') {
+        const category = decodeURIComponent(target.dataset.category);
+        const count = entries.filter(entry => entry.category === category).length;
+        const confirmed = await showConfirm({
+          title: '删除分类',
+          message: `确定删除「${category}」分类？\n${count} 个条目将被一并删除。`,
+          confirmText: '删除分类',
+          danger: true
+        });
+        if (confirmed && deleteCategory(category)) showToast(`分类及 ${count} 个条目已删除`);
+      }
+    });
+
+
+    elements.categoryList.addEventListener('change', event => {
+      const multiplierToggle = event.target.closest('[data-inline-multiplier-enabled]');
+      if (multiplierToggle) {
+        const editor = multiplierToggle.closest('[data-inline-multiplier-editor]');
+        const input = editor.querySelector('[data-inline-multiplier-input]');
+        input.disabled = !multiplierToggle.checked;
+        input.classList.remove('invalid');
+        if (multiplierToggle.checked) {
+          if (!input.value.trim()) input.value = '1';
+          input.focus();
+          input.select();
+        }
+        return;
+      }
+
+      const target = event.target.closest('[data-action="sort-category"]');
+      if (!target) return;
+      const category = decodeURIComponent(target.dataset.category);
+      state.sortByCategory.set(category, target.value);
+      render();
+    });
+
+    elements.categoryList.addEventListener('input', event => {
+      const input = event.target.closest('[data-inline-multiplier-input]');
+      if (input) input.classList.remove('invalid');
+    });
+
+    elements.categoryList.addEventListener('keydown', event => {
+      const input = event.target.closest('[data-inline-multiplier-input]');
+      if (!input || event.key !== 'Enter') return;
+      event.preventDefault();
+      input.closest('[data-inline-multiplier-editor]').querySelector('[data-action="save-entry-multiplier"]').click();
+    });
+
+    function clearDragState() {
+      state.draggedEntryId = null;
+      elements.categoryList.classList.remove('is-dragging');
+      elements.categoryList.querySelectorAll('.dragging, .drag-over').forEach(node => {
+        node.classList.remove('dragging', 'drag-over');
+      });
+    }
+
+    elements.categoryList.addEventListener('dragstart', event => {
+      const handle = event.target.closest('[data-drag-entry]');
+      if (!handle) return;
+      const id = decodeURIComponent(handle.dataset.dragEntry);
+      const entry = entries.find(item => item.id === id);
+      if (!entry) {
+        event.preventDefault();
+        return;
+      }
+
+      state.draggedEntryId = id;
+      elements.categoryList.classList.add('is-dragging');
+      handle.closest('tr')?.classList.add('dragging');
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', id);
+    });
+
+    elements.categoryList.addEventListener('dragover', event => {
+      const card = event.target.closest('.category-card');
+      if (!card || !state.draggedEntryId) return;
+      const entry = entries.find(item => item.id === state.draggedEntryId);
+      const targetCategory = decodeURIComponent(card.dataset.category);
+      if (!entry || entry.category === targetCategory) return;
+
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      elements.categoryList.querySelectorAll('.drag-over').forEach(node => {
+        if (node !== card) node.classList.remove('drag-over');
+      });
+      card.classList.add('drag-over');
+    });
+
+    elements.categoryList.addEventListener('dragleave', event => {
+      const card = event.target.closest('.category-card');
+      if (!card || (event.relatedTarget && card.contains(event.relatedTarget))) return;
+      card.classList.remove('drag-over');
+    });
+
+    elements.categoryList.addEventListener('drop', event => {
+      const card = event.target.closest('.category-card');
+      if (!card) return;
+      event.preventDefault();
+      const id = state.draggedEntryId || event.dataTransfer.getData('text/plain');
+      const targetCategory = decodeURIComponent(card.dataset.category);
+      const entry = entries.find(item => item.id === id);
+      clearDragState();
+      if (!entry || entry.category === targetCategory) return;
+      if (moveEntry(id, targetCategory)) {
+        showToast(`已移动到「${targetCategory}」`);
+      }
+    });
+
+    elements.categoryList.addEventListener('dragend', clearDragState);
+
+    elements.exportButton.addEventListener('click', exportData);
+    elements.importButton.addEventListener('click', () => elements.fileInput.click());
+    elements.fileInput.addEventListener('change', () => {
+      const [file] = elements.fileInput.files;
+      if (file) importFile(file);
+    });
+
+    elements.dialogCancel.addEventListener('click', () => closeDialog(false));
+    elements.dialogConfirm.addEventListener('click', () => {
+      if (activeDialogMode === 'input') {
+        const value = elements.dialogInput.value;
+        const error = activeDialogValidator ? activeDialogValidator(value) : '';
+        if (error) {
+          elements.dialogError.textContent = error;
+          elements.dialogError.classList.add('visible');
+          elements.dialogInput.focus();
+          return;
+        }
+        closeDialog(value);
+        return;
+      }
+      closeDialog(true);
+    });
+
+    elements.dialogInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        elements.dialogConfirm.click();
+      }
+    });
+
+    entries = loadEntries();
+    render();
+  </script>
+</body>
+</html>
