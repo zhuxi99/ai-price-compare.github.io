@@ -11,6 +11,29 @@ cd "$PROJECT_DIR" || {
 printf '\nAI 价格比对 - 一键发布\n'
 printf '========================\n\n'
 
+push_github_with_retry() {
+  local max_attempts="${GITHUB_PUSH_MAX_ATTEMPTS:-3}"
+  local retry_delay="${GITHUB_PUSH_RETRY_DELAY:-5}"
+  local log_file="${PUBLISH_LOG_FILE:-$PROJECT_DIR/一键发布.log}"
+  local attempt push_status
+
+  for ((attempt = 1; attempt <= max_attempts; attempt += 1)); do
+    printf '\n[%(%F %T)T] GitHub push，第 %d/%d 次\n' -1 "$attempt" "$max_attempts" | tee -a "$log_file"
+    git push origin main 2>&1 | tee -a "$log_file"
+    push_status=${PIPESTATUS[0]}
+    if [[ $push_status -eq 0 ]]; then
+      return 0
+    fi
+    if [[ $attempt -lt $max_attempts ]]; then
+      echo "第 ${attempt} 次推送失败，${retry_delay} 秒后重试……"
+      sleep "$retry_delay"
+    fi
+  done
+
+  echo "GitHub 推送连续失败，详细日志：$log_file"
+  return 1
+}
+
 publish_github_pages() {
   printf '\n正在发布 GitHub Pages……\n'
   git add -- index.html || return 1
@@ -21,7 +44,7 @@ publish_github_pages() {
     git commit -m "Update published price data" -- index.html || return 1
   fi
 
-  git push origin main || return 1
+  push_github_with_retry || return 1
   echo "GitHub Pages 发布成功：https://zhuxi99.github.io/ai-price-compare.github.io/"
 }
 
