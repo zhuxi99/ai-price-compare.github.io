@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile as execFileCallback } from 'node:child_process';
-import { access, readFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
@@ -33,4 +34,38 @@ test('the publish script can safely verify the latest backup without deploying',
   assert.doesNotMatch(generatedPage, /PUBLISHED_DATA = null/);
   assert.equal(githubPage, generatedPage);
   assert.match(result.stdout, /检查成功，未执行线上发布/);
+});
+
+test('a successful one-click publish commits and pushes the GitHub Pages file', async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'ai-price-launcher-git-test-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const npmPath = path.join(directory, 'npm');
+  const gitPath = path.join(directory, 'git');
+  const gitCallLog = path.join(directory, 'git-calls.log');
+  await writeFile(gitCallLog, '');
+  await writeFile(npmPath, '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 });
+  await writeFile(gitPath, `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$GIT_CALL_LOG"
+if [[ "$*" == "diff --cached --quiet -- index.html" ]]; then
+  exit 1
+fi
+exit 0
+`, { mode: 0o755 });
+
+  const result = await execFile(scriptPath, [], {
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      PATH: `${directory}:${process.env.PATH}`,
+      GIT_CALL_LOG: gitCallLog
+    },
+    maxBuffer: 1_000_000
+  });
+  const gitCalls = await readFile(gitCallLog, 'utf8');
+
+  assert.match(gitCalls, /^add -- index\.html$/m);
+  assert.match(gitCalls, /^diff --cached --quiet -- index\.html$/m);
+  assert.match(gitCalls, /^commit -m Update published price data -- index\.html$/m);
+  assert.match(gitCalls, /^push origin main$/m);
+  assert.match(result.stdout, /GitHub Pages 发布成功/);
 });
