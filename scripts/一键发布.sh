@@ -14,15 +14,19 @@ printf '========================\n\n'
 push_github_with_retry() {
   local max_attempts="${GITHUB_PUSH_MAX_ATTEMPTS:-3}"
   local retry_delay="${GITHUB_PUSH_RETRY_DELAY:-5}"
+  local push_timeout="${GITHUB_PUSH_TIMEOUT:-45}"
   local log_file="${PUBLISH_LOG_FILE:-$PROJECT_DIR/一键发布.log}"
   local attempt push_status
 
   for ((attempt = 1; attempt <= max_attempts; attempt += 1)); do
     printf '\n[%(%F %T)T] GitHub push，第 %d/%d 次\n' -1 "$attempt" "$max_attempts" | tee -a "$log_file"
-    git push origin main 2>&1 | tee -a "$log_file"
+    timeout --signal=TERM "$push_timeout" git push origin main 2>&1 | tee -a "$log_file"
     push_status=${PIPESTATUS[0]}
     if [[ $push_status -eq 0 ]]; then
       return 0
+    fi
+    if [[ $push_status -eq 124 ]]; then
+      echo "第 ${attempt} 次推送超过 ${push_timeout} 秒，已终止本次连接。" | tee -a "$log_file"
     fi
     if [[ $attempt -lt $max_attempts ]]; then
       echo "第 ${attempt} 次推送失败，${retry_delay} 秒后重试……"
