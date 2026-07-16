@@ -893,12 +893,169 @@
       .modal-footer { padding-left: 18px; padding-right: 18px; }
     }
 
+    /* Animated pearl-and-sakura background theme */
+    :root {
+      --primary: #167b9a;
+      --primary-dark: #0c5770;
+      --primary-soft: #e8f7fb;
+      --accent: #cf5f8e;
+      --accent-soft: #fff0f6;
+      --text: #172536;
+      --muted: #647487;
+      --border: rgba(187, 205, 220, .82);
+      --surface: rgba(248, 252, 255, .88);
+      --background: #dce8ef;
+      --shadow: 0 22px 55px rgba(18, 39, 55, .16), 0 3px 12px rgba(18, 39, 55, .08);
+    }
+
+    body {
+      position: relative;
+      isolation: isolate;
+      background: #dce8ef;
+    }
+
+    body::before { display: none; }
+
+    .ambient-background {
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 42% 18%, #f7edf3 0, transparent 36%),
+        linear-gradient(135deg, #d8e9f0, #b8cad7 54%, #172535);
+      pointer-events: none;
+    }
+
+    .ambient-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center center;
+      filter: brightness(.8) contrast(1.04) saturate(.88);
+      transform: scale(1.015);
+    }
+
+    .ambient-overlay {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(90deg, rgba(235, 245, 250, .84) 0%, rgba(232, 239, 246, .62) 38%, rgba(198, 204, 218, .54) 62%, rgba(10, 20, 33, .7) 100%),
+        linear-gradient(180deg, rgba(10, 24, 39, .16) 0%, rgba(231, 239, 246, .4) 48%, rgba(222, 234, 242, .82) 100%);
+    }
+
+    .topbar {
+      background: rgba(241, 249, 252, .76);
+      border-bottom-color: rgba(200, 219, 230, .7);
+      box-shadow: 0 10px 36px rgba(18, 38, 55, .13);
+      backdrop-filter: blur(24px) saturate(145%);
+    }
+
+    .brand-mark {
+      background: linear-gradient(145deg, #56b5c6, #167b9a 55%, #b84e7d);
+      box-shadow: 0 10px 24px rgba(18, 112, 140, .28), inset 0 1px rgba(255, 255, 255, .35);
+    }
+
+    .brand-subtitle { color: #5f7181; }
+    .record-count {
+      color: #0d6884;
+      background: rgba(232, 249, 252, .78);
+      border-color: rgba(101, 183, 201, .42);
+    }
+
+    .search-input {
+      background: rgba(251, 254, 255, .82);
+      border-color: rgba(184, 207, 220, .82);
+      box-shadow: 0 4px 14px rgba(20, 48, 66, .07), inset 0 1px rgba(255, 255, 255, .72);
+    }
+    .search-input:hover { border-color: #99bdce; }
+    .search-input:focus {
+      border-color: #53a8bd;
+      box-shadow: 0 0 0 4px rgba(22, 123, 154, .13), 0 8px 20px rgba(20, 48, 66, .08);
+    }
+
+    .btn:focus-visible { outline-color: rgba(22, 123, 154, .28); }
+    .btn-primary {
+      background: linear-gradient(135deg, #2695ad, #126c8a 62%, #a74774);
+      border-color: rgba(15, 102, 130, .86);
+      box-shadow: 0 8px 18px rgba(15, 102, 130, .24);
+    }
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #17859f, #0c5770 62%, #953a68);
+      border-color: #0c5770;
+      box-shadow: 0 10px 23px rgba(15, 88, 112, .28);
+    }
+    .btn-secondary {
+      color: #344c5c;
+      background: rgba(250, 253, 255, .78);
+      border-color: rgba(180, 203, 216, .82);
+    }
+    .btn-secondary:hover { color: #0c5770; background: rgba(255, 255, 255, .96); border-color: #91b8ca; }
+
+    .category-card {
+      background: rgba(246, 251, 254, .86);
+      border-color: rgba(213, 229, 237, .82);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px) saturate(125%);
+    }
+    .category-card:hover {
+      border-color: rgba(158, 195, 210, .92);
+      box-shadow: 0 26px 64px rgba(16, 38, 54, .2), 0 4px 14px rgba(16, 38, 54, .09);
+    }
+    .category-header {
+      background: linear-gradient(100deg, rgba(239, 249, 252, .94), rgba(255, 248, 252, .9));
+      border-bottom-color: rgba(198, 218, 229, .78);
+    }
+    .category-header::before { background: linear-gradient(#37a4b9, #d66d99); }
+    .category-toggle:hover { color: #0c5770; background: rgba(224, 246, 250, .66); }
+    .chevron, .relay-address { color: #167b9a; }
+    .relay-address:hover { color: #a64070; }
+    .category-count { color: #4e6878; background: rgba(224, 239, 246, .86); }
+    .sort-select { color: #344c5c; background: rgba(255, 255, 255, .84); border-color: rgba(184, 207, 220, .82); }
+
+    .table-wrap { background: rgba(250, 253, 255, .6); }
+    th { color: #526b7b; background: rgba(232, 243, 248, .9); border-bottom-color: rgba(195, 216, 227, .8); }
+    tbody tr:nth-child(even) { background: rgba(248, 252, 254, .7); }
+    tbody tr:hover { background: rgba(228, 246, 250, .88); box-shadow: inset 3px 0 #d66d99; }
+    .drag-handle:hover { color: #167b9a; background: #e1f3f7; }
+    .provider-content > span { color: #294253; }
+    .price-value { color: #172c3c; }
+    .price-output .price-value { color: #a64070; }
+
+    .modal-layer { background: rgba(9, 22, 35, .62); backdrop-filter: blur(12px); }
+    .modal { background: rgba(250, 253, 255, .96); border-color: rgba(220, 238, 245, .9); }
+    .modal-header { background: linear-gradient(100deg, #eef8fb, #fff5f9); }
+    .form-control:focus { border-color: #53a8bd; box-shadow: 0 0 0 4px rgba(22, 123, 154, .12); }
+
+    @media (max-width: 760px) {
+      .ambient-video { object-position: 47% center; filter: brightness(.7) contrast(1.03) saturate(.8); }
+      .ambient-overlay {
+        background:
+          linear-gradient(90deg, rgba(225, 238, 245, .74), rgba(26, 42, 57, .64)),
+          linear-gradient(180deg, rgba(7, 18, 30, .22), rgba(226, 238, 245, .8));
+      }
+      .topbar { background: rgba(239, 248, 252, .86); }
+      .category-card { background: rgba(248, 252, 254, .92); backdrop-filter: blur(14px); }
+      tbody tr,
+      tbody tr:nth-child(even),
+      tbody tr:hover { background: rgba(255, 255, 255, .9); border-color: rgba(196, 217, 228, .9); }
+      .model-cell { background: linear-gradient(100deg, rgba(229, 245, 249, .96), rgba(255, 245, 250, .94)); }
+      .price-cell { background: rgba(243, 249, 252, .94); }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+      .ambient-video { display: none; }
     }
   </style>
 </head>
 <body>
+  <div class="ambient-background" aria-hidden="true">
+    <video class="ambient-video" autoplay muted loop playsinline preload="metadata">
+      <source src="background.webm" type="video/webm">
+    </video>
+    <div class="ambient-overlay"></div>
+  </div>
   <header class="topbar">
     <div class="topbar-inner">
       <div class="brand-lockup">

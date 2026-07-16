@@ -160,6 +160,8 @@ function runSurge(projectDirectory, domain, surgeCommand) {
 
 async function main() {
   const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const backgroundVideoPath = path.join(projectRoot, 'background.webm');
+  const surgeBackgroundVideoPath = path.join(projectRoot, '.surge', 'background.webm');
   const args = process.argv.slice(2);
   const prepareOnly = args.includes('--prepare-only');
   const explicitPath = args.find(argument => !argument.startsWith('--'));
@@ -170,12 +172,16 @@ async function main() {
     outputPath: path.join(projectRoot, '.surge', 'index.html')
   });
   const githubPagesPath = path.join(projectRoot, 'index.html');
-  await copyFile(result.outputPath, githubPagesPath);
+  await Promise.all([
+    copyFile(result.outputPath, githubPagesPath),
+    copyFile(backgroundVideoPath, surgeBackgroundVideoPath)
+  ]);
 
   console.log(`已生成发布页：${result.entryCount} 条记录`);
   console.log(`数据文件：${result.dataPath}`);
   console.log(`数据时间：${result.exportedAt}`);
   console.log(`GitHub Pages：${githubPagesPath}`);
+  console.log(`视频背景：${backgroundVideoPath}`);
   if (prepareOnly) return;
 
   const surgeCommand = await resolveSurgeCommand(projectRoot);

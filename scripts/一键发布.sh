@@ -40,12 +40,12 @@ push_github_with_retry() {
 
 publish_github_pages() {
   printf '\n正在发布 GitHub Pages……\n'
-  git add -- index.html || return 1
+  git add -- index.html background.webm || return 1
 
-  if git diff --cached --quiet -- index.html; then
-    echo "GitHub Pages 数据没有变化，跳过提交。"
+  if git diff --cached --quiet -- index.html background.webm; then
+    echo "GitHub Pages 页面和视频没有变化，跳过提交。"
   else
-    git commit -m "Update published price data" -- index.html || return 1
+    git commit -m "Update published site" -- index.html background.webm || return 1
   fi
 
   push_github_with_retry || return 1
@@ -55,7 +55,13 @@ publish_github_pages() {
 prepare_only=false
 if [[ "${1:-}" == "--prepare-only" ]]; then
   prepare_only=true
-  npm run deploy:prepare
+  if [[ -n "${2:-}" ]]; then
+    npm run deploy:prepare -- "$2"
+  else
+    npm run deploy:prepare
+  fi
+elif [[ -n "${1:-}" ]]; then
+  npm run deploy:data -- "$1"
 else
   npm run deploy:data
 fi

@@ -100,6 +100,8 @@ test('a newer deployment replaces the previously published snapshot in the same 
   const firstRender = await execFile('google-chrome', chromeArgs, { maxBuffer: 2_000_000 });
   assert.match(firstRender.stdout, /测试模型/);
   assert.match(firstRender.stdout, /class="brand-mark"/);
+  assert.match(firstRender.stdout, /class="ambient-video" autoplay="" muted="" loop="" playsinline="" preload="metadata"/);
+  assert.match(firstRender.stdout, /src="background\.webm" type="video\/webm"/);
   assert.match(firstRender.stdout, /class="price-cell price-output" data-label="输出价"/);
   assert.match(firstRender.stdout, /class="relay-address" href="https:\/\/relay\.example\/register"/);
 
