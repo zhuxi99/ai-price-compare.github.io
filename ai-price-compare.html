@@ -606,12 +606,308 @@
       .modal-header, .modal-body { padding-left: 16px; padding-right: 16px; }
       .modal-footer { padding-left: 16px; padding-right: 16px; }
     }
+
+    /* 2026 visual refresh */
+    :root {
+      --primary: #4f46e5;
+      --primary-dark: #3730a3;
+      --primary-soft: #eef2ff;
+      --accent: #0891b2;
+      --accent-soft: #ecfeff;
+      --danger: #e11d48;
+      --danger-dark: #be123c;
+      --text: #182033;
+      --muted: #697386;
+      --border: #dfe4ee;
+      --surface: rgba(255, 255, 255, .94);
+      --background: #f5f7fb;
+      --shadow: 0 18px 45px rgba(38, 51, 77, .08), 0 2px 8px rgba(38, 51, 77, .04);
+      --header-height: 92px;
+    }
+
+    body {
+      background:
+        radial-gradient(circle at 10% -10%, rgba(79, 70, 229, .12), transparent 30%),
+        radial-gradient(circle at 92% 5%, rgba(8, 145, 178, .1), transparent 28%),
+        linear-gradient(180deg, #f8faff 0, var(--background) 420px);
+      letter-spacing: -.006em;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      opacity: .28;
+      background-image: radial-gradient(rgba(79, 70, 229, .16) .6px, transparent .6px);
+      background-size: 22px 22px;
+      pointer-events: none;
+    }
+
+    .topbar {
+      background: rgba(250, 251, 255, .84);
+      border-bottom-color: rgba(207, 214, 228, .78);
+      box-shadow: 0 8px 32px rgba(37, 45, 72, .07);
+      backdrop-filter: blur(18px) saturate(150%);
+    }
+
+    .topbar-inner { width: min(1540px, calc(100% - 48px)); gap: 18px; }
+
+    .brand-lockup {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      min-width: 228px;
+    }
+
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 43px;
+      height: 43px;
+      color: #fff;
+      background: linear-gradient(145deg, #6366f1, #4338ca 58%, #0891b2);
+      border: 1px solid rgba(255, 255, 255, .42);
+      border-radius: 14px;
+      box-shadow: 0 9px 20px rgba(79, 70, 229, .26), inset 0 1px rgba(255, 255, 255, .28);
+      font-size: 14px;
+      font-weight: 850;
+      letter-spacing: -.04em;
+    }
+
+    .brand-copy { display: grid; gap: 2px; }
+    .brand { font-size: 21px; font-weight: 800; letter-spacing: -.035em; }
+    .brand-subtitle { color: var(--muted); font-size: 11px; letter-spacing: .04em; }
+
+    .record-count {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 10px;
+      color: #4f46e5;
+      background: rgba(238, 242, 255, .9);
+      border: 1px solid #dbe0ff;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .search-wrap { max-width: 620px; }
+    .search-input {
+      height: 46px;
+      background: rgba(255, 255, 255, .88);
+      border-color: #d9dfeb;
+      border-radius: 14px;
+      box-shadow: 0 3px 10px rgba(37, 45, 72, .035), inset 0 1px rgba(255, 255, 255, .6);
+    }
+    .search-input:hover { border-color: #c6cfdf; }
+    .search-input:focus {
+      border-color: #818cf8;
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, .12), 0 8px 18px rgba(37, 45, 72, .06);
+    }
+    .search-icon { color: #7c86a0; font-size: 17px; }
+
+    .toolbar-actions { gap: 9px; }
+    .btn {
+      min-height: 40px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: -.005em;
+      transition: transform .16s ease, box-shadow .16s ease, background .16s, border-color .16s, color .16s;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn-primary {
+      background: linear-gradient(135deg, #5b55ea, #4338ca);
+      border-color: #4f46e5;
+      box-shadow: 0 7px 16px rgba(79, 70, 229, .2);
+    }
+    .btn-primary:hover { background: linear-gradient(135deg, #4f46e5, #3730a3); box-shadow: 0 9px 20px rgba(79, 70, 229, .25); }
+    .btn-secondary { color: #3c465d; background: rgba(255, 255, 255, .82); border-color: #d8deea; }
+    .btn-secondary:hover { color: #3730a3; background: #fff; border-color: #bfc8dc; box-shadow: 0 6px 14px rgba(37, 45, 72, .07); }
+    .btn-ghost-danger { background: rgba(255, 255, 255, .7); border-color: #fecdd3; }
+    .btn-small { min-height: 33px; padding: 5px 10px; }
+
+    main { width: min(1540px, calc(100% - 48px)); padding-top: calc(var(--header-height) + 34px); }
+    .category-list { gap: 24px; }
+    .category-card {
+      overflow: hidden;
+      border-color: rgba(215, 222, 235, .88);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+    }
+    .category-card:hover { border-color: #cbd3e3; box-shadow: 0 22px 52px rgba(38, 51, 77, .105), 0 3px 10px rgba(38, 51, 77, .05); }
+
+    .category-header {
+      position: relative;
+      min-height: 72px;
+      padding: 14px 18px 14px 22px;
+      background: linear-gradient(100deg, rgba(248, 250, 255, .98), rgba(255, 255, 255, .96));
+      border-bottom-color: #e5e9f1;
+    }
+    .category-header::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 18px;
+      bottom: 18px;
+      width: 4px;
+      background: linear-gradient(#6366f1, #06b6d4);
+      border-radius: 0 4px 4px 0;
+    }
+    .category-toggle { gap: 9px; }
+    .category-toggle:hover { color: #3730a3; background: rgba(238, 242, 255, .62); }
+    .chevron { color: #6366f1; }
+    .category-title { font-size: 18px; font-weight: 800; letter-spacing: -.025em; }
+    .category-count {
+      padding: 2px 8px;
+      color: #667085;
+      background: #eef1f6;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .sort-select { min-height: 38px; border-color: #d7deea; border-radius: 10px; font-weight: 600; }
+
+    .table-wrap { background: rgba(255, 255, 255, .7); }
+    th, td { padding: 14px 16px; }
+    th {
+      color: #657087;
+      background: #f7f8fb;
+      border-bottom-color: #e3e8f0;
+      font-size: 12px;
+      letter-spacing: .02em;
+      text-transform: none;
+    }
+    tbody tr { transition: background .14s ease, box-shadow .14s ease; }
+    tbody tr:nth-child(even) { background: #fbfcfe; }
+    tbody tr:hover { background: #f1f4ff; box-shadow: inset 3px 0 #818cf8; }
+    .model-cell { font-weight: 750; }
+    .drag-handle { color: #a7b0c3; }
+    .drag-handle:hover { color: #4f46e5; background: #e9edff; }
+    .provider-content > span { color: #344054; font-weight: 650; }
+    .relay-address { color: #4f46e5; }
+    .relay-address:hover { color: #3730a3; }
+    .price-value { color: #182033; font-size: 15px; font-weight: 800; letter-spacing: -.02em; }
+    .price-output .price-value { color: #4338ca; }
+    .multiplier-note { color: #7a8498; }
+    .inline-multiplier-editor { gap: 7px; }
+    .inline-multiplier-input { border-color: #d4dbe8; border-radius: 9px; }
+
+    .modal-layer { background: rgba(23, 31, 50, .58); backdrop-filter: blur(7px); }
+    .modal {
+      border: 1px solid rgba(255, 255, 255, .72);
+      border-radius: 18px;
+      box-shadow: 0 32px 90px rgba(17, 24, 39, .3);
+    }
+    .modal-header { padding: 22px 24px 16px; background: linear-gradient(100deg, #f8f9ff, #fff); }
+    .modal-title { font-size: 21px; font-weight: 800; letter-spacing: -.025em; }
+    .modal-body { padding: 22px 24px; }
+    .modal-footer { padding: 15px 24px 22px; }
+    .form-control { height: 44px; border-color: #d5dce8; border-radius: 10px; background: #fcfdff; }
+    .form-control:hover { border-color: #bdc7d9; }
+    .form-control:focus { background: #fff; border-color: #818cf8; box-shadow: 0 0 0 4px rgba(99, 102, 241, .11); }
+    .toast { border: 1px solid rgba(255, 255, 255, .12); border-radius: 12px; box-shadow: 0 18px 40px rgba(15, 23, 42, .28); }
+
+    @media (max-width: 1080px) {
+      :root { --header-height: 150px; }
+      .topbar-inner { width: min(100% - 32px, 1540px); }
+      .brand-lockup { min-width: 0; }
+      .brand { font-size: 20px; }
+      .search-wrap { order: 3; }
+      main { width: min(100% - 32px, 1540px); }
+    }
+
+    @media (max-width: 760px) {
+      :root { --header-height: 220px; }
+      .topbar-inner, main { width: min(100% - 24px, 1540px); }
+      .topbar-inner { gap: 10px; }
+      .brand-lockup { flex: 1 1 auto; }
+      .brand-mark { width: 39px; height: 39px; border-radius: 12px; }
+      .brand-subtitle { display: none; }
+      .record-count { margin-left: auto; }
+      .toolbar-actions { order: 2; }
+      .search-wrap { order: 3; }
+      main { padding-top: calc(var(--header-height) + 26px); }
+      .category-card { border-radius: 16px; }
+      .category-header { padding: 14px 12px 14px 17px; }
+      .category-header::before { top: 16px; bottom: 16px; }
+      .category-actions { gap: 7px; }
+      .table-wrap { overflow: visible; padding: 10px; }
+      table, tbody { display: block; width: 100%; min-width: 0; }
+      thead { display: none; }
+      tbody { display: grid; gap: 11px; }
+      tbody tr,
+      tbody tr:nth-child(even),
+      tbody tr:hover {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        overflow: hidden;
+        background: #fff;
+        border: 1px solid #e1e6ef;
+        border-radius: 13px;
+        box-shadow: 0 5px 16px rgba(38, 51, 77, .055);
+      }
+      tbody tr:hover { box-shadow: 0 7px 20px rgba(38, 51, 77, .08); }
+      td {
+        display: block;
+        min-width: 0;
+        padding: 10px 11px;
+        border: 0;
+        white-space: normal;
+      }
+      td:not(.model-cell)::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 4px;
+        color: #8a94a8;
+        font-size: 10px;
+        font-weight: 750;
+        letter-spacing: .04em;
+      }
+      .model-cell, .provider-cell, .multiplier-cell, .action-cell { grid-column: 1 / -1; width: auto; }
+      .model-cell { padding: 13px 11px; background: linear-gradient(100deg, #f5f7ff, #fbfcff); border-bottom: 1px solid #e5e9f2; }
+      .provider-cell { padding-top: 11px; padding-bottom: 7px; }
+      .provider-content { gap: 2px; }
+      .relay-address { max-width: 100%; }
+      .multiplier-cell { padding-top: 7px; padding-bottom: 12px; }
+      .inline-multiplier-editor { grid-template-columns: auto minmax(0, 1fr) auto; min-width: 0; }
+      .price-cell { width: auto; padding-top: 10px; padding-bottom: 12px; background: #fafbfe; border-top: 1px solid #edf0f5; }
+      .cache-column { display: block; }
+      .price-value { font-size: 14px; }
+      .multiplier-note { display: block; margin: 1px 0 0; font-size: 10px; }
+      .action-cell { padding-top: 11px; border-top: 1px solid #e8ecf3; }
+      .row-actions { display: grid; grid-template-columns: repeat(3, 1fr); }
+      .row-actions .btn { width: 100%; }
+    }
+
+    @media (max-width: 430px) {
+      :root { --header-height: 218px; }
+      .toolbar-actions { width: 100%; }
+      .toolbar-actions .btn { min-height: 38px; }
+      .category-title { font-size: 17px; }
+      .category-actions .sort-select { flex-basis: 100%; }
+      .modal-header, .modal-body { padding-left: 18px; padding-right: 18px; }
+      .modal-footer { padding-left: 18px; padding-right: 18px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
   </style>
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-inner">
-      <h1 class="brand">AI 价格比对</h1>
+      <div class="brand-lockup">
+        <span class="brand-mark" aria-hidden="true">AI</span>
+        <div class="brand-copy">
+          <h1 class="brand">AI 价格比对</h1>
+          <span class="brand-subtitle">模型成本 · 清晰决策</span>
+        </div>
+      </div>
       <span id="recordCount" class="record-count"></span>
 
       <div class="search-wrap">
@@ -621,8 +917,8 @@
       </div>
 
       <div class="toolbar-actions">
-        <button id="exportButton" class="btn btn-secondary" type="button">导出 JSON</button>
-        <button id="importButton" class="btn btn-secondary" type="button">导入 JSON</button>
+        <button id="exportButton" class="btn btn-secondary" type="button">↓ 导出</button>
+        <button id="importButton" class="btn btn-secondary" type="button">↑ 导入</button>
         <button id="addButton" class="btn btn-primary" type="button">＋ 添加条目</button>
       </div>
       <input id="fileInput" type="file" accept=".json,application/json" hidden>
@@ -1073,19 +1369,19 @@
         const entryId = encoded(entry.id);
         return `
           <tr data-entry-id="${entryId}">
-            <td class="model-cell">
+            <td class="model-cell" data-label="模型名称">
               <div class="model-content">
                 <span class="drag-handle" draggable="true" data-drag-entry="${entryId}" title="拖动到其他分类" aria-hidden="true">⠿</span>
                 <span>${escapeHtml(entry.modelName)}</span>
               </div>
             </td>
-            <td class="provider-cell">
+            <td class="provider-cell" data-label="中转站">
               <div class="provider-content">
                 <span>${escapeHtml(entry.provider)}</span>
                 ${relayAddressMarkup(entry)}
               </div>
             </td>
-            <td class="multiplier-cell">
+            <td class="multiplier-cell" data-label="倍率">
               <div class="inline-multiplier-editor" data-inline-multiplier-editor data-id="${entryId}">
                 <label class="inline-multiplier-toggle" title="是否对本条记录启用倍率">
                   <input type="checkbox" data-inline-multiplier-enabled${entry.useMultiplier ? ' checked' : ''}>
@@ -1098,10 +1394,10 @@
                 <button class="btn btn-primary btn-small" type="button" data-action="save-entry-multiplier" data-id="${entryId}">保存</button>
               </div>
             </td>
-            <td class="price-cell">${priceMarkup(entry, 'baseInputPrice')}</td>
-            <td class="price-cell cache-column">${priceMarkup(entry, 'baseCacheInputPrice')}</td>
-            <td class="price-cell">${priceMarkup(entry, 'baseOutputPrice')}</td>
-            <td class="action-cell">
+            <td class="price-cell price-input" data-label="输入价">${priceMarkup(entry, 'baseInputPrice')}</td>
+            <td class="price-cell price-cache cache-column" data-label="缓存价">${priceMarkup(entry, 'baseCacheInputPrice')}</td>
+            <td class="price-cell price-output" data-label="输出价">${priceMarkup(entry, 'baseOutputPrice')}</td>
+            <td class="action-cell" data-label="操作">
               <div class="row-actions">
                 <button class="btn btn-secondary btn-small" type="button" data-action="copy-entry" data-id="${entryId}">拷贝</button>
                 <button class="btn btn-secondary btn-small" type="button" data-action="edit-entry" data-id="${entryId}">编辑</button>
