@@ -39,13 +39,17 @@ push_github_with_retry() {
 }
 
 publish_github_pages() {
+  local publish_paths=(index.html)
+  if [[ $upload_background == true ]]; then
+    publish_paths+=(background.webp)
+  fi
   printf '\n正在发布 GitHub Pages……\n'
-  git add -- index.html background.webm || return 1
+  git add -- "${publish_paths[@]}" || return 1
 
-  if git diff --cached --quiet -- index.html background.webm; then
-    echo "GitHub Pages 页面和视频没有变化，跳过提交。"
+  if git diff --cached --quiet -- "${publish_paths[@]}"; then
+    echo "GitHub Pages 本次发布内容没有变化，跳过提交。"
   else
-    git commit -m "Update published site" -- index.html background.webm || return 1
+    git commit -m "Update published site" -- "${publish_paths[@]}" || return 1
   fi
 
   push_github_with_retry || return 1
@@ -53,17 +57,59 @@ publish_github_pages() {
 }
 
 prepare_only=false
-if [[ "${1:-}" == "--prepare-only" ]]; then
-  prepare_only=true
-  if [[ -n "${2:-}" ]]; then
-    npm run deploy:prepare -- "$2"
+upload_background=false
+upload_choice_set=false
+data_path=""
+
+case "${UPLOAD_BACKGROUND_ASSET:-}" in
+  1|true|TRUE|yes|YES|y|Y) upload_background=true; upload_choice_set=true ;;
+  0|false|FALSE|no|NO|n|N) upload_choice_set=true ;;
+esac
+
+for argument in "$@"; do
+  case "$argument" in
+    --prepare-only) prepare_only=true ;;
+    --upload-background) upload_background=true; upload_choice_set=true ;;
+    --skip-background) upload_background=false; upload_choice_set=true ;;
+    --*) echo "未知参数：$argument"; exit 1 ;;
+    *) data_path="$argument" ;;
+  esac
+done
+
+if [[ $prepare_only == false && $upload_choice_set == false && -t 0 ]]; then
+  printf '背景图片有更换时才需要上传，默认复用线上背景。\n'
+  read -r -p '本次是否上传新的背景图片？[y/N] ' upload_answer
+  case "$upload_answer" in
+    y|Y|yes|YES) upload_background=true ;;
+  esac
+fi
+
+if [[ $prepare_only == true ]]; then
+  prepare_args=()
+  if [[ $upload_background == true ]]; then
+    prepare_args+=(--upload-background)
+  fi
+  if [[ -n "$data_path" ]]; then
+    prepare_args+=("$data_path")
+  fi
+  if [[ ${#prepare_args[@]} -gt 0 ]]; then
+    npm run deploy:prepare -- "${prepare_args[@]}"
   else
     npm run deploy:prepare
   fi
-elif [[ -n "${1:-}" ]]; then
-  npm run deploy:data -- "$1"
 else
-  npm run deploy:data
+  deploy_args=()
+  if [[ $upload_background == true ]]; then
+    deploy_args+=(--upload-background)
+  fi
+  if [[ -n "$data_path" ]]; then
+    deploy_args+=("$data_path")
+  fi
+  if [[ ${#deploy_args[@]} -gt 0 ]]; then
+    npm run deploy:data -- "${deploy_args[@]}"
+  else
+    npm run deploy:data
+  fi
 fi
 status=$?
 

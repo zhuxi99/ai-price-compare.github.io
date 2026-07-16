@@ -44,8 +44,9 @@ test('the publish script can safely verify the latest backup without deploying',
     ]);
 
     assert.doesNotMatch(generatedPage, /PUBLISHED_DATA = null/);
-    assert.equal(githubPage, generatedPage);
-    assert.ok((await stat(path.join(projectRoot, '.surge', 'background.webm'))).size > 0);
+    assert.match(githubPage, /src="background\.webp"/);
+    assert.match(generatedPage, /src="https:\/\/zhuxi99\.github\.io\/ai-price-compare\.github\.io\/background\.webp"/);
+    await assert.rejects(stat(path.join(projectRoot, '.surge', 'background.webp')), /ENOENT/);
     assert.match(result.stdout, /检查成功，未执行线上发布/);
   } finally {
     await rm(dataPath, { force: true });
@@ -62,7 +63,7 @@ test('a successful one-click publish commits and pushes the GitHub Pages file', 
   await writeFile(npmPath, '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 });
   await writeFile(gitPath, `#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$GIT_CALL_LOG"
-if [[ "$*" == "diff --cached --quiet -- index.html background.webm" ]]; then
+if [[ "$*" == "diff --cached --quiet -- index.html" ]]; then
   exit 1
 fi
 exit 0
@@ -80,11 +81,45 @@ exit 0
   });
   const gitCalls = await readFile(gitCallLog, 'utf8');
 
-  assert.match(gitCalls, /^add -- index\.html background\.webm$/m);
-  assert.match(gitCalls, /^diff --cached --quiet -- index\.html background\.webm$/m);
-  assert.match(gitCalls, /^commit -m Update published site -- index\.html background\.webm$/m);
+  assert.match(gitCalls, /^add -- index\.html$/m);
+  assert.match(gitCalls, /^diff --cached --quiet -- index\.html$/m);
+  assert.match(gitCalls, /^commit -m Update published site -- index\.html$/m);
   assert.match(gitCalls, /^push origin main$/m);
   assert.match(result.stdout, /GitHub Pages 发布成功/);
+});
+
+test('the background upload switch includes the optimized image in the publish commit', async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'ai-price-launcher-background-test-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const npmPath = path.join(directory, 'npm');
+  const gitPath = path.join(directory, 'git');
+  const gitCallLog = path.join(directory, 'git-calls.log');
+  await writeFile(gitCallLog, '');
+  await writeFile(npmPath, '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 });
+  await writeFile(gitPath, `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$GIT_CALL_LOG"
+if [[ "$*" == "diff --cached --quiet -- index.html background.webp" ]]; then
+  exit 1
+fi
+exit 0
+`, { mode: 0o755 });
+
+  await execFile(scriptPath, [], {
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      PATH: `${directory}:${process.env.PATH}`,
+      GIT_CALL_LOG: gitCallLog,
+      UPLOAD_BACKGROUND_ASSET: 'true',
+      PUBLISH_LOG_FILE: path.join(directory, 'publish.log')
+    },
+    maxBuffer: 1_000_000
+  });
+  const gitCalls = await readFile(gitCallLog, 'utf8');
+
+  assert.match(gitCalls, /^add -- index\.html background\.webp$/m);
+  assert.match(gitCalls, /^diff --cached --quiet -- index\.html background\.webp$/m);
+  assert.match(gitCalls, /^commit -m Update published site -- index\.html background\.webp$/m);
 });
 
 test('one-click publish retries transient GitHub push failures', async t => {
@@ -95,7 +130,7 @@ test('one-click publish retries transient GitHub push failures', async t => {
   const pushCountPath = path.join(directory, 'push-count');
   await writeFile(npmPath, '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 });
   await writeFile(gitPath, `#!/usr/bin/env bash
-if [[ "$*" == "diff --cached --quiet -- index.html background.webm" ]]; then
+if [[ "$*" == "diff --cached --quiet -- index.html" ]]; then
   exit 0
 fi
 if [[ "$*" == "push origin main" ]]; then
@@ -134,7 +169,7 @@ test('one-click publish times out a hung GitHub push before retrying', async t =
   const pushCountPath = path.join(directory, 'push-count');
   await writeFile(npmPath, '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 });
   await writeFile(gitPath, `#!/usr/bin/env bash
-if [[ "$*" == "diff --cached --quiet -- index.html background.webm" ]]; then
+if [[ "$*" == "diff --cached --quiet -- index.html" ]]; then
   exit 0
 fi
 if [[ "$*" == "push origin main" ]]; then

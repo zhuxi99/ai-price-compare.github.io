@@ -1,10 +1,12 @@
 import { spawn } from 'node:child_process';
-import { constants, access, copyFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { constants, access, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const DATA_MARKER = 'const PUBLISHED_DATA = null; // __PUBLISHED_DATA__';
+const BACKGROUND_SOURCE_MARKER = 'src="background.webp"';
+const SHARED_BACKGROUND_URL = 'https://zhuxi99.github.io/ai-price-compare.github.io/background.webp';
 
 function isValidRelayAddress(value) {
   if (value === undefined || value === '') return true;
@@ -160,33 +162,45 @@ function runSurge(projectDirectory, domain, surgeCommand) {
 
 async function main() {
   const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const backgroundVideoPath = path.join(projectRoot, 'background.webm');
-  const surgeBackgroundVideoPath = path.join(projectRoot, '.surge', 'background.webm');
+  const backgroundPath = path.join(projectRoot, 'background.webp');
+  const surgeDirectory = path.join(projectRoot, '.surge');
+  const surgeBackgroundPath = path.join(surgeDirectory, 'background.webp');
   const args = process.argv.slice(2);
   const prepareOnly = args.includes('--prepare-only');
+  const uploadBackground = args.includes('--upload-background');
   const explicitPath = args.find(argument => !argument.startsWith('--'));
   const dataPath = explicitPath ? path.resolve(explicitPath) : await findDefaultSnapshot();
+  const githubPagesPath = path.join(projectRoot, 'index.html');
   const result = await prepareDeployment({
     templatePath: path.join(projectRoot, 'ai-price-compare.html'),
     dataPath,
-    outputPath: path.join(projectRoot, '.surge', 'index.html')
+    outputPath: githubPagesPath
   });
-  const githubPagesPath = path.join(projectRoot, 'index.html');
-  await Promise.all([
-    copyFile(result.outputPath, githubPagesPath),
-    copyFile(backgroundVideoPath, surgeBackgroundVideoPath)
-  ]);
+  const githubPage = await readFile(githubPagesPath, 'utf8');
+  if (!githubPage.includes(BACKGROUND_SOURCE_MARKER)) {
+    throw new Error('页面模板缺少背景资源标记');
+  }
+  const surgePage = uploadBackground
+    ? githubPage
+    : githubPage.replace(BACKGROUND_SOURCE_MARKER, `src="${SHARED_BACKGROUND_URL}"`);
+  await mkdir(surgeDirectory, { recursive: true });
+  await writeFile(path.join(surgeDirectory, 'index.html'), surgePage);
+  await rm(path.join(surgeDirectory, 'background.webm'), { force: true });
+  if (uploadBackground) await copyFile(backgroundPath, surgeBackgroundPath);
+  else await rm(surgeBackgroundPath, { force: true });
 
   console.log(`已生成发布页：${result.entryCount} 条记录`);
   console.log(`数据文件：${result.dataPath}`);
   console.log(`数据时间：${result.exportedAt}`);
   console.log(`GitHub Pages：${githubPagesPath}`);
-  console.log(`视频背景：${backgroundVideoPath}`);
+  console.log(uploadBackground
+    ? `背景图片：本次上传 ${backgroundPath}`
+    : `背景图片：复用线上文件 ${SHARED_BACKGROUND_URL}`);
   if (prepareOnly) return;
 
   const surgeCommand = await resolveSurgeCommand(projectRoot);
   console.log(`使用 Surge：${surgeCommand}`);
-  await runSurge(path.join(projectRoot, '.surge'), 'ai-price-compare.surge.sh', surgeCommand);
+  await runSurge(surgeDirectory, 'ai-price-compare.surge.sh', surgeCommand);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
