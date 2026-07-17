@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   buildAccessHeaders,
@@ -15,12 +16,21 @@ import {
 import { createRatioFetchServer, extractPublishedSiteCandidates } from '../scripts/ratio-fetch-server.mjs';
 import { SavedSitesStore } from '../scripts/saved-sites-store.mjs';
 
+const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json' }
   });
 }
+
+test('local fetch UI hides models unavailable in the selected group', async () => {
+  const page = await readFile(path.join(PROJECT_ROOT, 'ratio-fetcher.html'), 'utf8');
+  assert.match(page, /\.filter\(\(\{ result, model \}\) => isAvailable\(result, model\)\)\s*\.filter\(/);
+  assert.doesNotMatch(page, />分组不可用</);
+  assert.match(page, /当前分组可用 \$\{availableModels\} 个/);
+});
 
 test('normalizes site URLs and builds compatible access-token headers', () => {
   assert.equal(normalizeSiteUrl('example.com/console?tab=price'), 'https://example.com');

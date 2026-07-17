@@ -418,7 +418,7 @@
             </thead>
             <tbody id="modelRows"></tbody>
           </table>
-          <div id="emptyModels" class="empty" hidden>没有符合筛选条件的模型</div>
+          <div id="emptyModels" class="empty" hidden>当前分组没有可用模型，或没有符合筛选条件的模型</div>
         </div>
         <p class="hint">价格按 New API 规则换算：倍率 1 对应 2 美元额度 / 1M tokens；实付倍率 = 分组倍率 ÷ 每 1 元到账的美元额度。普通 1:1 不变，充值 1→10 会再除以 10。接口未提供缓存倍率时，缓存输入价暂按普通输入价计算；按次计费模型不会写入当前价格表。</p>
       </div>
@@ -696,6 +696,7 @@
         model,
         key: modelKey(result, model)
       })))
+        .filter(({ result, model }) => isAvailable(result, model))
         .filter(({ result, model }) => !query
           || result.site.name.toLowerCase().includes(query)
           || model.modelName.toLowerCase().includes(query)
@@ -721,16 +722,13 @@
     function renderModels() {
       const models = filteredModels();
       elements.modelRows.replaceChildren();
-      state.visibleSelectable = models.filter(({ result, model }) => isAvailable(result, model)).map(item => item.key);
+      state.visibleSelectable = models.map(item => item.key);
 
       for (const { result, model, key } of models) {
-        const available = isAvailable(result, model);
         const row = document.createElement('tr');
-        if (!available) row.className = 'unavailable';
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = state.selectedModels.has(key);
-        checkbox.disabled = !available;
         checkbox.setAttribute('aria-label', `选择 ${model.modelName}`);
         checkbox.addEventListener('change', () => {
           if (checkbox.checked) state.selectedModels.add(key);
@@ -751,15 +749,17 @@
         appendCell(row, `×${formatNumber(model.completionRatio)}`);
         appendCell(row, `×${formatNumber(resultGroupRatio(result))}`);
         appendCell(row, `×${formatNumber(resultGroupRatio(result) / (Number(result.site.creditPerCny) || 1))}`);
-        const prices = available ? calculatePrice(result, model) : null;
-        appendCell(row, prices ? `¥${formatNumber(prices.input, 2)}` : model.billingType === 'times' ? '按次计费' : '分组不可用', prices ? 'price' : '');
-        appendCell(row, prices ? `¥${formatNumber(prices.output, 2)}` : '—', prices ? 'price' : '');
+        const prices = calculatePrice(result, model);
+        appendCell(row, `¥${formatNumber(prices.input, 2)}`, 'price');
+        appendCell(row, `¥${formatNumber(prices.output, 2)}`, 'price');
         elements.modelRows.appendChild(row);
       }
 
       elements.emptyModels.hidden = models.length > 0;
       const totalModels = state.results.reduce((total, result) => total + result.catalog.models.length, 0);
-      elements.resultMeta.textContent = `共 ${state.results.length} 站 / ${totalModels} 个 · 当前显示 ${models.length} 个 · 已选 ${state.selectedModels.size} 个`;
+      const availableModels = state.results.reduce((total, result) => total
+        + result.catalog.models.filter(model => isAvailable(result, model)).length, 0);
+      elements.resultMeta.textContent = `共 ${state.results.length} 站 · 接口返回 ${totalModels} 个 · 当前分组可用 ${availableModels} 个 · 显示 ${models.length} 个 · 已选 ${state.selectedModels.size} 个`;
       updateMasterCheckbox();
       updateSaveSummary();
     }
