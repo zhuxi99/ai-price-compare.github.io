@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 价格比对 · 本地倍率抓取</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --text: #253027;
+      --muted: #758077;
+      --border: #e1e8df;
+      --green: #5f8d68;
+      --green-dark: #476e50;
+      --green-soft: #edf6ea;
+      --yellow: #9a8235;
+      --yellow-soft: #fff7d8;
+      --danger: #b44b4b;
+      --danger-soft: #fff0ee;
+      --shadow: 0 12px 36px rgba(35, 55, 39, .07), 0 1px 4px rgba(35, 55, 39, .04);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      color: var(--text);
+      background: #f7f9f6;
+      font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    [hidden] { display: none !important; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(255, 255, 255, .96);
+      border-bottom: 1px solid #e9ede8;
+      backdrop-filter: blur(16px);
+    }
+    .topbar-inner, main { width: min(1320px, calc(100% - 40px)); margin: 0 auto; }
+    .topbar-inner { min-height: 76px; display: flex; align-items: center; gap: 14px; }
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      color: #45644b;
+      background: var(--green-soft);
+      border: 1px solid #d5e5d1;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 850;
+    }
+    h1 { margin: 0; font-size: 20px; letter-spacing: -.025em; }
+    .subtitle { color: #899189; font-size: 12px; }
+    .snapshot-pill {
+      margin-left: auto;
+      padding: 7px 11px;
+      color: #6f622b;
+      background: var(--yellow-soft);
+      border: 1px solid #eee2ad;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+
+    main { padding: 28px 0 54px; }
+    .hero { margin-bottom: 20px; }
+    .hero h2 { margin: 0 0 7px; font-size: clamp(22px, 3vw, 30px); letter-spacing: -.035em; }
+    .hero p { max-width: 860px; margin: 0; color: var(--muted); }
+
+    .card {
+      overflow: hidden;
+      margin-bottom: 20px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 17px 20px;
+      background: #fbfcfa;
+      border-bottom: 1px solid #e8ece7;
+    }
+    .step {
+      width: 27px;
+      height: 27px;
+      display: grid;
+      place-items: center;
+      color: #44614a;
+      background: #eaf4e7;
+      border-radius: 50%;
+      font-weight: 800;
+    }
+    .card-title { margin: 0; font-size: 17px; }
+    .card-body { padding: 20px; }
+    .form-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
+    .field { grid-column: span 4; min-width: 0; }
+    .field.wide { grid-column: span 8; }
+    .field.full { grid-column: 1 / -1; }
+    label { display: block; margin-bottom: 6px; color: #4a554c; font-weight: 700; }
+    .hint { display: block; margin-top: 5px; color: #8a938b; font-size: 12px; }
+    .control {
+      width: 100%;
+      height: 42px;
+      padding: 8px 11px;
+      color: var(--text);
+      background: #fff;
+      border: 1px solid #dbe3da;
+      border-radius: 9px;
+      outline: 0;
+    }
+    .control:hover { border-color: #c6d3c4; }
+    .control:focus { border-color: #9fbd9f; box-shadow: 0 0 0 4px rgba(129, 170, 129, .13); }
+    .secret-wrap { position: relative; }
+    .secret-wrap .control { padding-right: 66px; }
+    .reveal-button {
+      position: absolute;
+      right: 5px;
+      top: 5px;
+      height: 32px;
+      padding: 0 9px;
+      color: #69736b;
+      background: #f4f7f3;
+      border: 0;
+      border-radius: 7px;
+      font-size: 12px;
+    }
+    .security-note {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      margin: 18px 0 0;
+      padding: 11px 13px;
+      color: #4d624f;
+      background: #f1f7ef;
+      border: 1px solid #dbe9d7;
+      border-radius: 9px;
+      font-size: 13px;
+    }
+    .actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 18px; }
+    .button {
+      min-height: 39px;
+      padding: 8px 15px;
+      color: #4e5850;
+      background: #fff;
+      border: 1px solid #dce4db;
+      border-radius: 9px;
+      font-weight: 720;
+    }
+    .button:hover { color: #3e5d45; background: #f6faf4; border-color: #c9d7c7; }
+    .button.primary { color: #36543d; background: #e7f2e3; border-color: #c8dec2; }
+    .button.primary:hover { background: #dcebd7; border-color: #b8d2b1; }
+    .button:disabled { opacity: .55; cursor: not-allowed; }
+    .button.loading::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 7px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -2px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .status { display: none; margin-top: 15px; padding: 10px 12px; border-radius: 8px; white-space: pre-line; }
+    .status.visible { display: block; }
+    .status.error { color: #8f3838; background: var(--danger-soft); border: 1px solid #efcfca; }
+    .status.success { color: #46604b; background: #f0f7ee; border: 1px solid #d5e7d1; }
+
+    .result-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 18px; }
+    .result-toolbar .search { flex: 1 1 280px; }
+    .result-meta { color: var(--muted); font-size: 13px; }
+    .source-badge { padding: 4px 8px; color: #6d5f29; background: var(--yellow-soft); border-radius: 999px; font-weight: 700; }
+    .table-wrap { max-height: 560px; margin-top: 12px; overflow: auto; border: 1px solid #e4e9e3; border-radius: 10px; }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th, td { padding: 10px 11px; text-align: left; border-bottom: 1px solid #edf0ec; white-space: nowrap; }
+    th { position: sticky; top: 0; z-index: 1; color: #68716a; background: #fafbfa; font-size: 12px; }
+    tr:last-child td { border-bottom: 0; }
+    tbody tr:nth-child(even) { background: #fcfdfb; }
+    tbody tr:hover { background: #f2f7ef; }
+    tr.unavailable { opacity: .55; }
+    .model-name { max-width: 300px; overflow: hidden; text-overflow: ellipsis; font-weight: 720; }
+    .category-chip { padding: 3px 7px; color: #526653; background: #edf5ea; border-radius: 999px; font-size: 12px; }
+    .price { color: #7c6b2d; font-weight: 760; }
+    .empty { padding: 36px 20px; color: var(--muted); text-align: center; }
+    .radio-row { min-height: 42px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+    .radio-row label { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-weight: 600; }
+    input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
+    .save-summary { margin-right: auto; color: var(--muted); }
+
+    @media (max-width: 900px) {
+      .field, .field.wide { grid-column: span 6; }
+      .model-name { max-width: 230px; }
+    }
+    @media (max-width: 620px) {
+      .topbar-inner, main { width: min(100% - 24px, 1320px); }
+      .topbar-inner { min-height: 86px; flex-wrap: wrap; align-content: center; padding: 10px 0; }
+      .snapshot-pill { width: 100%; margin-left: 0; text-align: center; }
+      main { padding-top: 20px; }
+      .field, .field.wide { grid-column: 1 / -1; }
+      .card-header, .card-body { padding-left: 15px; padding-right: 15px; }
+      .actions { align-items: stretch; flex-direction: column; }
+      .actions .button { width: 100%; }
+      .save-summary { margin-right: 0; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <span class="brand-mark">AI</span>
+      <div>
+        <h1>本地倍率抓取工具</h1>
+        <div class="subtitle">只在你的电脑运行 · 不公开令牌入口</div>
+      </div>
+      <div id="snapshotPill" class="snapshot-pill">正在读取最新价格数据…</div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h2>输入站点，一次抓取模型与分组倍率</h2>
+      <p>兼容 New API、One API、Veloera，以及 One Hub / Done Hub 常见接口。抓取完成后会自动识别模型家族、计算人民币价格，并合并到最新价格 JSON。</p>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <span class="step">1</span>
+        <h3 class="card-title">连接目标站点</h3>
+      </div>
+      <div class="card-body">
+        <form id="fetchForm">
+          <div class="form-grid">
+            <div class="field wide">
+              <label for="siteUrl">网站地址</label>
+              <input id="siteUrl" class="control" type="text" inputmode="url" autocomplete="off" placeholder="https://example.com" required>
+              <span class="hint">填首页、登录页地址都可以，工具会自动取站点域名。</span>
+            </div>
+            <div class="field">
+              <label for="siteType">站点类型</label>
+              <select id="siteType" class="control">
+                <option value="auto">自动识别（推荐）</option>
+                <option value="new-api">New API / One API / Veloera</option>
+                <option value="one-hub">One Hub / Done Hub</option>
+              </select>
+            </div>
+            <div class="field wide">
+              <label for="accessToken">访问令牌</label>
+              <div class="secret-wrap">
+                <input id="accessToken" class="control" type="password" autocomplete="new-password" spellcheck="false" placeholder="可留空；需要鉴权的站点再填写">
+                <button id="revealToken" class="reveal-button" type="button">显示</button>
+              </div>
+              <span class="hint">支持用户访问令牌。抓取请求结束后，输入框会立即清空。</span>
+            </div>
+            <div class="field">
+              <label for="userId">用户 ID（可选）</label>
+              <input id="userId" class="control" type="text" autocomplete="off" placeholder="如 1">
+              <span class="hint">部分 New API 分支要求与访问令牌同时填写。</span>
+            </div>
+            <div class="field">
+              <label for="tokenMode">令牌格式</label>
+              <select id="tokenMode" class="control">
+                <option value="bearer">Bearer（推荐）</option>
+                <option value="raw">原始令牌</option>
+              </select>
+            </div>
+          </div>
+          <div class="security-note"><span>✓</span><span>令牌只从浏览器发送给本机 127.0.0.1，再由本机直连你填写的站点；不会写入 JSON、日志、GitHub 或线上网站。</span></div>
+          <div class="actions">
+            <button id="fetchButton" class="button primary" type="submit">识别站点并抓取倍率</button>
+          </div>
+          <div id="fetchStatus" class="status" role="alert"></div>
+        </form>
+      </div>
+    </section>
+
+    <section id="resultCard" class="card" hidden>
+      <div class="card-header">
+        <span class="step">2</span>
+        <h3 class="card-title">选择分组并检查模型</h3>
+        <span id="sourceBadge" class="source-badge"></span>
+      </div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="field">
+            <label for="groupSelect">价格分组</label>
+            <select id="groupSelect" class="control"></select>
+          </div>
+          <div class="field">
+            <label for="exchangeRate">美元兑人民币</label>
+            <input id="exchangeRate" class="control" type="number" min="0.01" step="0.01" value="7.20" inputmode="decimal">
+          </div>
+          <div class="field">
+            <label for="providerName">中转站名称</label>
+            <input id="providerName" class="control" type="text" maxlength="160">
+          </div>
+          <div class="field wide">
+            <label>分类方式</label>
+            <div class="radio-row">
+              <label><input type="radio" name="categoryMode" value="auto" checked> 自动识别模型家族</label>
+              <label><input type="radio" name="categoryMode" value="fixed"> 全部放入一个分类</label>
+            </div>
+          </div>
+          <div id="fixedCategoryField" class="field" hidden>
+            <label for="fixedCategory">分类名称</label>
+            <input id="fixedCategory" class="control" type="text" value="自动抓取">
+          </div>
+        </div>
+
+        <div class="result-toolbar">
+          <input id="modelSearch" class="control search" type="search" placeholder="筛选模型名称或自动分类">
+          <button id="selectVisible" class="button" type="button">全选当前结果</button>
+          <button id="clearSelection" class="button" type="button">取消全选</button>
+          <span id="resultMeta" class="result-meta"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th><input id="masterCheckbox" type="checkbox" aria-label="全选"></th>
+                <th>模型</th>
+                <th>自动分类</th>
+                <th>模型倍率</th>
+                <th>输出倍率</th>
+                <th>分组倍率</th>
+                <th>输入价</th>
+                <th>输出价</th>
+              </tr>
+            </thead>
+            <tbody id="modelRows"></tbody>
+          </table>
+          <div id="emptyModels" class="empty" hidden>没有符合筛选条件的模型</div>
+        </div>
+        <p class="hint">价格按 New API 规则换算：倍率 1 对应 2 美元 / 1M tokens，再乘分组倍率和美元汇率。接口未提供缓存倍率时，缓存输入价暂按普通输入价计算；按次计费模型不会写入当前价格表。</p>
+      </div>
+    </section>
+
+    <section id="saveCard" class="card" hidden>
+      <div class="card-header">
+        <span class="step">3</span>
+        <h3 class="card-title">生成新的发布数据</h3>
+      </div>
+      <div class="card-body">
+        <p style="margin:0;color:var(--muted)">保存时会读取“下载”目录中最新的有效价格 JSON：同一站点、同一模型自动更新，其余记录保持不变；新模型自动加入。</p>
+        <div class="actions">
+          <span id="saveSummary" class="save-summary"></span>
+          <button id="saveButton" class="button primary" type="button">保存为新 JSON</button>
+        </div>
+        <div id="saveStatus" class="status" role="status"></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    'use strict';
+
+    const CATEGORY_ORDER = [
+      'GPT / OpenAI', 'Claude', 'Gemini', 'DeepSeek', '通义千问 Qwen', '智谱 GLM',
+      'Kimi / Moonshot', '豆包 Doubao', 'MiniMax', 'Grok', 'Llama / Meta', 'Mistral',
+      'Yi / 零一万物', '图像生成', '视频生成', '语音与音频', '向量与重排', '其他模型'
+    ];
+    const FAMILY_RULES = [
+      ['GPT / OpenAI', [/\bgpt[-_.\s]?/i, /\bo[134](?:[-_.\s]|$)/i, /codex/i, /chatgpt/i]],
+      ['Claude', [/claude/i, /fable/i]], ['Gemini', [/gemini/i, /gemma/i]],
+      ['DeepSeek', [/deepseek/i]], ['通义千问 Qwen', [/qwen/i, /qwq/i, /通义/i]],
+      ['智谱 GLM', [/\bglm/i, /chatglm/i, /智谱/i]], ['Kimi / Moonshot', [/kimi/i, /moonshot/i]],
+      ['豆包 Doubao', [/doubao/i, /豆包/i]], ['MiniMax', [/minimax/i, /abab/i]],
+      ['Grok', [/\bgrok/i]], ['Llama / Meta', [/llama/i, /\bmeta[-_.\s]/i]],
+      ['Mistral', [/mistral/i, /mixtral/i, /codestral/i]], ['Yi / 零一万物', [/(^|[-_.\s])yi[-_.\s]/i, /零一万物/i]],
+      ['图像生成', [/dall[-_.\s]?e/i, /midjourney/i, /flux/i, /stable[-_.\s]?diffusion/i, /imagen/i, /image/i]],
+      ['视频生成', [/sora/i, /veo/i, /kling/i, /可灵/i, /video/i, /wan[-_.\s]?2/i]],
+      ['语音与音频', [/whisper/i, /tts/i, /speech/i, /audio/i, /suno/i]],
+      ['向量与重排', [/embedding/i, /embed/i, /rerank/i, /bge[-_.\s]/i]]
+    ];
+
+    const elements = Object.fromEntries([
+      'snapshotPill', 'fetchForm', 'siteUrl', 'siteType', 'accessToken', 'userId', 'tokenMode',
+      'revealToken', 'fetchButton', 'fetchStatus', 'resultCard', 'sourceBadge', 'groupSelect',
+      'exchangeRate', 'providerName', 'fixedCategoryField', 'fixedCategory', 'modelSearch',
+      'selectVisible', 'clearSelection', 'resultMeta', 'masterCheckbox', 'modelRows', 'emptyModels',
+      'saveCard', 'saveSummary', 'saveButton', 'saveStatus'
+    ].map(id => [id, document.getElementById(id)]));
+
+    const state = { catalog: null, selected: new Set(), visibleSelectable: [] };
+
+    function classifyModel(name) {
+      return FAMILY_RULES.find(([, patterns]) => patterns.some(pattern => pattern.test(name)))?.[0] || '其他模型';
+    }
+
+    function categoryRank(category) {
+      const index = CATEGORY_ORDER.indexOf(category);
+      return index === -1 ? CATEGORY_ORDER.length : index;
+    }
+
+    function setStatus(element, message = '', type = '') {
+      element.textContent = message;
+      element.className = `status${message ? ' visible' : ''}${type ? ` ${type}` : ''}`;
+    }
+
+    function setLoading(button, loading, text) {
+      button.disabled = loading;
+      button.classList.toggle('loading', loading);
+      if (text) button.textContent = text;
+    }
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        ...options,
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+      });
+      const body = await response.json().catch(() => ({ ok: false, message: '本地工具返回异常' }));
+      if (!response.ok || !body.ok) throw new Error(body.message || `请求失败（${response.status}）`);
+      return body;
+    }
+
+    async function refreshSnapshotState() {
+      try {
+        const data = await api('/api/state', { method: 'GET', headers: {} });
+        const time = new Date(data.exportedAt).toLocaleString('zh-CN', { hour12: false });
+        elements.snapshotPill.textContent = `当前底稿 ${data.entryCount} 条 · ${time}`;
+        elements.snapshotPill.title = data.sourceName;
+      } catch (error) {
+        elements.snapshotPill.textContent = `底稿读取失败：${error.message}`;
+      }
+    }
+
+    function currentGroup() {
+      return elements.groupSelect.value || 'default';
+    }
+
+    function currentGroupRatio() {
+      return Number(state.catalog?.groupRatio?.[currentGroup()] || 1);
+    }
+
+    function isAvailable(model) {
+      return model.billingType === 'tokens'
+        && (model.enableGroups.length === 0 || model.enableGroups.includes(currentGroup()));
+    }
+
+    function calculatePrice(model) {
+      const exchange = Number(elements.exchangeRate.value) || 0;
+      const groupRatio = currentGroupRatio();
+      const baseInput = model.directInputUsd ?? model.modelRatio * 2;
+      const baseOutput = model.directOutputUsd ?? baseInput * model.completionRatio;
+      return { input: baseInput * exchange * groupRatio, output: baseOutput * exchange * groupRatio };
+    }
+
+    function formatNumber(value, digits = 4) {
+      if (!Number.isFinite(value)) return '—';
+      return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: digits }).format(value);
+    }
+
+    function appendCell(row, content, className = '') {
+      const cell = document.createElement('td');
+      if (content instanceof Node) cell.appendChild(content);
+      else cell.textContent = content;
+      if (className) cell.className = className;
+      row.appendChild(cell);
+      return cell;
+    }
+
+    function filteredModels() {
+      const query = elements.modelSearch.value.trim().toLowerCase();
+      return state.catalog.models
+        .filter(model => !query || model.modelName.toLowerCase().includes(query) || classifyModel(model.modelName).toLowerCase().includes(query))
+        .sort((left, right) => {
+          const family = categoryRank(classifyModel(left.modelName)) - categoryRank(classifyModel(right.modelName));
+          if (family) return family;
+          const price = (calculatePrice(left)?.output || Infinity) - (calculatePrice(right)?.output || Infinity);
+          return price || left.modelName.localeCompare(right.modelName, 'zh-CN');
+        });
+    }
+
+    function updateSaveSummary() {
+      const selectedAvailable = [...state.selected].filter(name => {
+        const model = state.catalog?.models.find(item => item.modelName === name);
+        return model && isAvailable(model);
+      }).length;
+      elements.saveSummary.textContent = `将合并 ${selectedAvailable} 个模型；同站点同模型自动更新`;
+      elements.saveButton.disabled = selectedAvailable === 0;
+    }
+
+    function renderModels() {
+      const models = filteredModels();
+      elements.modelRows.replaceChildren();
+      state.visibleSelectable = models.filter(isAvailable).map(model => model.modelName);
+
+      for (const model of models) {
+        const available = isAvailable(model);
+        const row = document.createElement('tr');
+        if (!available) row.className = 'unavailable';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = state.selected.has(model.modelName);
+        checkbox.disabled = !available;
+        checkbox.setAttribute('aria-label', `选择 ${model.modelName}`);
+        checkbox.addEventListener('change', () => {
+          if (checkbox.checked) state.selected.add(model.modelName);
+          else state.selected.delete(model.modelName);
+          updateMasterCheckbox();
+          updateSaveSummary();
+        });
+        appendCell(row, checkbox);
+        const nameCell = appendCell(row, model.modelName, 'model-name');
+        nameCell.title = model.modelName;
+        const category = document.createElement('span');
+        category.className = 'category-chip';
+        category.textContent = classifyModel(model.modelName);
+        appendCell(row, category);
+        appendCell(row, `×${formatNumber(model.modelRatio)}`);
+        appendCell(row, `×${formatNumber(model.completionRatio)}`);
+        appendCell(row, `×${formatNumber(currentGroupRatio())}`);
+        const prices = available ? calculatePrice(model) : null;
+        appendCell(row, prices ? `¥${formatNumber(prices.input, 2)}` : model.billingType === 'times' ? '按次计费' : '分组不可用', prices ? 'price' : '');
+        appendCell(row, prices ? `¥${formatNumber(prices.output, 2)}` : '—', prices ? 'price' : '');
+        elements.modelRows.appendChild(row);
+      }
+
+      elements.emptyModels.hidden = models.length > 0;
+      elements.resultMeta.textContent = `共 ${state.catalog.models.length} 个 · 当前显示 ${models.length} 个 · 已选 ${state.selected.size} 个`;
+      updateMasterCheckbox();
+      updateSaveSummary();
+    }
+
+    function updateMasterCheckbox() {
+      const selectedVisible = state.visibleSelectable.filter(name => state.selected.has(name)).length;
+      elements.masterCheckbox.checked = state.visibleSelectable.length > 0 && selectedVisible === state.visibleSelectable.length;
+      elements.masterCheckbox.indeterminate = selectedVisible > 0 && selectedVisible < state.visibleSelectable.length;
+    }
+
+    function selectAvailableModels() {
+      state.selected = new Set(state.catalog.models.filter(isAvailable).map(model => model.modelName));
+      renderModels();
+    }
+
+    function showCatalog(catalog) {
+      state.catalog = catalog;
+      elements.sourceBadge.textContent = catalog.sourceType === 'one-hub' ? 'One Hub 系' : 'New API 系';
+      elements.groupSelect.replaceChildren();
+      Object.entries(catalog.groupRatio)
+        .sort((left, right) => left[0] === 'default' ? -1 : right[0] === 'default' ? 1 : left[0].localeCompare(right[0], 'zh-CN'))
+        .forEach(([key, ratio]) => {
+          const option = document.createElement('option');
+          option.value = key;
+          option.textContent = `${catalog.usableGroup[key] || key}（×${formatNumber(Number(ratio))}）`;
+          elements.groupSelect.appendChild(option);
+        });
+      const hostname = new URL(catalog.baseUrl).hostname;
+      elements.providerName.value = hostname;
+      elements.fixedCategory.value = `${hostname} 自动抓取`;
+      elements.resultCard.hidden = false;
+      elements.saveCard.hidden = false;
+      selectAvailableModels();
+      elements.resultCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    elements.fetchForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      setStatus(elements.fetchStatus);
+      setStatus(elements.saveStatus);
+      setLoading(elements.fetchButton, true, '正在识别并抓取…');
+      const body = {
+        siteUrl: elements.siteUrl.value.trim(),
+        siteType: elements.siteType.value,
+        accessToken: elements.accessToken.value,
+        userId: elements.userId.value.trim(),
+        tokenMode: elements.tokenMode.value
+      };
+      try {
+        const data = await api('/api/fetch-ratios', { method: 'POST', body: JSON.stringify(body) });
+        showCatalog(data.catalog);
+        setStatus(elements.fetchStatus, `抓取成功：识别到 ${data.catalog.models.length} 个模型、${Object.keys(data.catalog.groupRatio).length} 个价格分组。访问令牌已从输入框清除。`, 'success');
+      } catch (error) {
+        setStatus(elements.fetchStatus, `${error.message}\n请检查令牌、用户 ID 和站点类型；若站点有 Cloudflare 人机验证，本地直连也可能被拦截。`, 'error');
+      } finally {
+        elements.accessToken.value = '';
+        elements.accessToken.type = 'password';
+        elements.revealToken.textContent = '显示';
+        setLoading(elements.fetchButton, false, '识别站点并抓取倍率');
+      }
+    });
+
+    elements.revealToken.addEventListener('click', () => {
+      const showing = elements.accessToken.type === 'text';
+      elements.accessToken.type = showing ? 'password' : 'text';
+      elements.revealToken.textContent = showing ? '显示' : '隐藏';
+    });
+
+    elements.groupSelect.addEventListener('change', selectAvailableModels);
+    elements.exchangeRate.addEventListener('input', renderModels);
+    elements.modelSearch.addEventListener('input', renderModels);
+    elements.selectVisible.addEventListener('click', () => {
+      for (const name of state.visibleSelectable) state.selected.add(name);
+      renderModels();
+    });
+    elements.clearSelection.addEventListener('click', () => {
+      state.selected.clear();
+      renderModels();
+    });
+    elements.masterCheckbox.addEventListener('change', () => {
+      for (const name of state.visibleSelectable) {
+        if (elements.masterCheckbox.checked) state.selected.add(name);
+        else state.selected.delete(name);
+      }
+      renderModels();
+    });
+    document.querySelectorAll('input[name="categoryMode"]').forEach(input => input.addEventListener('change', () => {
+      elements.fixedCategoryField.hidden = input.value !== 'fixed' || !input.checked;
+    }));
+
+    elements.saveButton.addEventListener('click', async () => {
+      setStatus(elements.saveStatus);
+      const exchangeRate = Number(elements.exchangeRate.value);
+      if (!Number.isFinite(exchangeRate) || exchangeRate <= 0) {
+        return setStatus(elements.saveStatus, '美元汇率必须大于 0', 'error');
+      }
+      if (!elements.providerName.value.trim()) {
+        return setStatus(elements.saveStatus, '请填写中转站名称', 'error');
+      }
+      setLoading(elements.saveButton, true, '正在合并并保存…');
+      try {
+        const categoryMode = document.querySelector('input[name="categoryMode"]:checked').value;
+        const data = await api('/api/save-snapshot', {
+          method: 'POST',
+          body: JSON.stringify({
+            catalog: state.catalog,
+            selectedModels: [...state.selected],
+            group: currentGroup(),
+            exchangeRate,
+            provider: elements.providerName.value.trim(),
+            categoryMode,
+            fixedCategory: elements.fixedCategory.value.trim()
+          })
+        });
+        setStatus(elements.saveStatus, `保存成功：${data.outputName}\n新增 ${data.added} 条，更新 ${data.updated} 条，跳过 ${data.skipped} 条；新底稿共 ${data.entryCount} 条。现在可以双击“AI价格比对－一键发布”。`, 'success');
+        await refreshSnapshotState();
+      } catch (error) {
+        setStatus(elements.saveStatus, error.message, 'error');
+      } finally {
+        setLoading(elements.saveButton, false, '保存为新 JSON');
+      }
+    });
+
+    refreshSnapshotState();
+  </script>
+</body>
+</html>

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "test": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "ratios": "node scripts/ratio-fetch-server.mjs --open",
     "deploy": "node scripts/deploy-data.mjs",
     "deploy:data": "node scripts/deploy-data.mjs",
     "deploy:prepare": "node scripts/deploy-data.mjs --prepare-only"

@@ -10,6 +10,8 @@ const execFile = promisify(execFileCallback);
 const projectRoot = path.resolve(import.meta.dirname, '..');
 const launcherPath = path.join(projectRoot, 'AI价格比对-一键发布.desktop');
 const scriptPath = path.join(projectRoot, 'scripts', '一键发布.sh');
+const ratioLauncherPath = path.join(projectRoot, 'AI价格比对-倍率抓取.desktop');
+const ratioScriptPath = path.join(projectRoot, 'scripts', '倍率抓取工具.sh');
 
 test('the desktop launcher is valid and points to an executable publish script', async () => {
   const launcher = await readFile(launcherPath, 'utf8');
@@ -19,6 +21,17 @@ test('the desktop launcher is valid and points to an executable publish script',
   assert.match(launcher, /^Terminal=true$/m);
   await access(scriptPath, 1);
   await execFile('desktop-file-validate', [launcherPath]);
+});
+
+test('the local ratio-fetch launcher is valid and points to an executable local-only tool', async () => {
+  const launcher = await readFile(ratioLauncherPath, 'utf8');
+
+  assert.match(launcher, /^\[Desktop Entry\]$/m);
+  assert.match(launcher, new RegExp(`^Exec=${ratioScriptPath}$`, 'm'));
+  assert.match(launcher, /^Terminal=true$/m);
+  await access(ratioScriptPath, 1);
+  await execFile('desktop-file-validate', [ratioLauncherPath]);
+  await execFile('bash', ['-n', ratioScriptPath]);
 });
 
 test('the publish script can safely verify the latest backup without deploying', async () => {

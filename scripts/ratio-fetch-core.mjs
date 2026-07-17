@@ -1,0 +1,412 @@
+const NEW_API_QUOTA_PRICE_USD_PER_MILLION = 2;
+
+export class RatioFetchError extends Error {
+  constructor(message, options = {}) {
+    super(message, options);
+    this.name = 'RatioFetchError';
+    this.status = options.status;
+  }
+}
+
+function finiteNumber(value, fallback = null) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const number = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function nonNegativeNumber(value, fallback = null) {
+  const number = finiteNumber(value, fallback);
+  return number !== null && number >= 0 ? number : fallback;
+}
+
+function positiveNumber(value, fallback = null) {
+  const number = finiteNumber(value, fallback);
+  return number !== null && number > 0 ? number : fallback;
+}
+
+function cleanString(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isRecord(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function normalizeSiteUrl(value) {
+  const input = cleanString(value);
+  if (!input) throw new RatioFetchError('请填写目标站点地址');
+
+  let url;
+  try {
+    url = new URL(/^https?:\/\//i.test(input) ? input : `https://${input}`);
+  } catch {
+    throw new RatioFetchError('目标站点地址格式不正确');
+  }
+
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new RatioFetchError('目标站点只支持 HTTP 或 HTTPS');
+  }
+  if (url.username || url.password) {
+    throw new RatioFetchError('目标站点地址不能包含用户名或密码');
+  }
+
+  return url.origin;
+}
+
+export function buildAccessHeaders({ accessToken = '', userId = '', tokenMode = 'bearer' } = {}) {
+  const headers = { Accept: 'application/json' };
+  const token = cleanString(accessToken).replace(/^Bearer\s+/i, '');
+  if (token) {
+    headers.Authorization = tokenMode === 'raw' ? token : `Bearer ${token}`;
+  }
+
+  const normalizedUserId = cleanString(userId);
+  if (normalizedUserId) {
+    for (const name of [
+      'New-API-User',
+      'Veloera-User',
+      'X-Api-User',
+      'voapi-user',
+      'User-id',
+      'Rix-Api-User',
+      'neo-api-user'
+    ]) {
+      headers[name] = normalizedUserId;
+    }
+  }
+  return headers;
+}
+
+async function readResponseMessage(response) {
+  try {
+    const body = await response.clone().json();
+    for (const value of [body?.message, body?.msg, body?.error?.message]) {
+      if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 240);
+    }
+  } catch {
+    // Upstream error bodies are frequently HTML; do not expose them in the UI.
+  }
+  return '';
+}
+
+async function fetchJson(fetchImpl, url, headers, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetchImpl(url, {
+      method: 'GET',
+      headers,
+      redirect: 'follow',
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      const upstreamMessage = await readResponseMessage(response);
+      throw new RatioFetchError(
+        upstreamMessage || `目标站点返回 HTTP ${response.status}`,
+        { status: response.status }
+      );
+    }
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType && !/json/i.test(contentType)) {
+      throw new RatioFetchError('目标接口没有返回 JSON，可能被登录页或防护页面拦截');
+    }
+    try {
+      return await response.json();
+    } catch {
+      throw new RatioFetchError('目标接口返回的 JSON 无法解析');
+    }
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new RatioFetchError('连接目标站点超时');
+    if (error instanceof RatioFetchError) throw error;
+    throw new RatioFetchError(`无法连接目标站点：${error?.message || '网络错误'}`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function unwrapEnvelope(payload) {
+  if (!isRecord(payload)) return payload;
+  if (isRecord(payload.data) && typeof payload.success === 'boolean') return payload.data;
+  return payload;
+}
+
+function normalizeGroupMaps(groupRatioValue, usableGroupValue) {
+  const groupRatio = {};
+  const usableGroup = {};
+  const rawRatios = isRecord(groupRatioValue) ? groupRatioValue : {};
+  const rawLabels = isRecord(usableGroupValue) ? usableGroupValue : {};
+
+  for (const [key, value] of Object.entries(rawRatios)) {
+    const ratio = positiveNumber(value);
+    if (ratio !== null) groupRatio[key] = ratio;
+  }
+  for (const [key, value] of Object.entries(rawLabels)) {
+    if (typeof value === 'string' && value.trim()) usableGroup[key] = value.trim();
+  }
+  if (Object.keys(groupRatio).length === 0) groupRatio.default = 1;
+  for (const key of Object.keys(groupRatio)) {
+    if (!usableGroup[key]) usableGroup[key] = key === 'default' ? '默认分组' : key;
+  }
+  return { groupRatio, usableGroup };
+}
+
+function normalizeNewApiPricing(payload) {
+  const response = unwrapEnvelope(payload);
+  if (!isRecord(response) || !Array.isArray(response.data)) {
+    throw new RatioFetchError('该站点的 /api/pricing 返回格式不兼容');
+  }
+
+  const models = response.data.map((row) => {
+    if (!isRecord(row)) return null;
+    const modelName = cleanString(row.model_name ?? row.model);
+    if (!modelName) return null;
+    const direct = isRecord(row.token_price_usd_per_million)
+      ? row.token_price_usd_per_million
+      : {};
+    return {
+      modelName,
+      quotaType: finiteNumber(row.quota_type, 0),
+      modelRatio: nonNegativeNumber(row.model_ratio, 0),
+      completionRatio: nonNegativeNumber(row.completion_ratio, 1),
+      cacheRatio: nonNegativeNumber(row.cache_ratio, null),
+      directInputUsd: nonNegativeNumber(direct.input, null),
+      directOutputUsd: nonNegativeNumber(direct.output, null),
+      directCacheUsd: nonNegativeNumber(direct.cache_read, null),
+      enableGroups: Array.isArray(row.enable_groups)
+        ? row.enable_groups.filter(value => typeof value === 'string' && value.trim()).map(value => value.trim())
+        : [],
+      owner: cleanString(row.owner_by ?? row.vendor_name),
+      billingType: finiteNumber(row.quota_type, 0) === 0 ? 'tokens' : 'times'
+    };
+  }).filter(Boolean);
+
+  if (models.length === 0) throw new RatioFetchError('倍率接口没有返回可识别的模型');
+  const groups = normalizeGroupMaps(response.group_ratio, response.usable_group);
+  return { sourceType: 'new-api', models, ...groups };
+}
+
+function normalizeOneHubPricing(availablePayload, groupPayload) {
+  const availableModels = unwrapEnvelope(availablePayload);
+  const groupsPayload = unwrapEnvelope(groupPayload);
+  if (!isRecord(availableModels) || Array.isArray(availableModels)) {
+    throw new RatioFetchError('该站点的 /api/available_model 返回格式不兼容');
+  }
+
+  const models = Object.entries(availableModels).map(([name, value]) => {
+    if (!isRecord(value) || !isRecord(value.price)) return null;
+    const modelName = cleanString(name);
+    const input = positiveNumber(value.price.input, 1);
+    const output = nonNegativeNumber(value.price.output, input);
+    return {
+      modelName,
+      quotaType: value.price.type === 'times' ? 1 : 0,
+      modelRatio: 1,
+      completionRatio: input ? output / input : 1,
+      cacheRatio: null,
+      directInputUsd: null,
+      directOutputUsd: null,
+      directCacheUsd: null,
+      enableGroups: Array.isArray(value.groups)
+        ? value.groups.filter(group => typeof group === 'string' && group.trim()).map(group => group.trim())
+        : [],
+      owner: cleanString(value.owned_by),
+      billingType: value.price.type === 'times' ? 'times' : 'tokens'
+    };
+  }).filter(Boolean);
+
+  if (models.length === 0) throw new RatioFetchError('One Hub 接口没有返回可识别的模型');
+  const rawGroupRatios = {};
+  const rawGroupLabels = {};
+  if (isRecord(groupsPayload)) {
+    for (const [key, group] of Object.entries(groupsPayload)) {
+      if (!isRecord(group)) continue;
+      rawGroupRatios[key] = group.ratio;
+      rawGroupLabels[key] = cleanString(group.name) || key;
+    }
+  }
+  const groups = normalizeGroupMaps(rawGroupRatios, rawGroupLabels);
+  return { sourceType: 'one-hub', models, ...groups };
+}
+
+export async function fetchRatioCatalog({
+  siteUrl,
+  accessToken = '',
+  userId = '',
+  tokenMode = 'bearer',
+  siteType = 'auto',
+  timeoutMs = 15_000,
+  fetchImpl = globalThis.fetch
+}) {
+  if (typeof fetchImpl !== 'function') throw new RatioFetchError('当前 Node.js 不支持网络请求');
+  const baseUrl = normalizeSiteUrl(siteUrl);
+  const headers = buildAccessHeaders({ accessToken, userId, tokenMode });
+  const errors = [];
+
+  if (siteType === 'auto' || siteType === 'new-api') {
+    try {
+      const payload = await fetchJson(fetchImpl, `${baseUrl}/api/pricing`, headers, timeoutMs);
+      return { baseUrl, ...normalizeNewApiPricing(payload) };
+    } catch (error) {
+      if (siteType === 'new-api') throw error;
+      errors.push(`New API：${error.message}`);
+    }
+  }
+
+  if (siteType === 'auto' || siteType === 'one-hub') {
+    try {
+      const [available, groups] = await Promise.all([
+        fetchJson(fetchImpl, `${baseUrl}/api/available_model`, headers, timeoutMs),
+        fetchJson(fetchImpl, `${baseUrl}/api/user_group_map`, headers, timeoutMs)
+      ]);
+      return { baseUrl, ...normalizeOneHubPricing(available, groups) };
+    } catch (error) {
+      if (siteType === 'one-hub') throw error;
+      errors.push(`One Hub：${error.message}`);
+    }
+  }
+
+  throw new RatioFetchError(`未识别出兼容站点。${errors.join('；')}`);
+}
+
+const MODEL_FAMILIES = [
+  { category: 'GPT / OpenAI', patterns: [/\bgpt[-_.\s]?/i, /\bo[134](?:[-_.\s]|$)/i, /codex/i, /chatgpt/i] },
+  { category: 'Claude', patterns: [/claude/i, /fable/i] },
+  { category: 'Gemini', patterns: [/gemini/i, /gemma/i] },
+  { category: 'DeepSeek', patterns: [/deepseek/i] },
+  { category: '通义千问 Qwen', patterns: [/qwen/i, /qwq/i, /通义/i] },
+  { category: '智谱 GLM', patterns: [/\bglm/i, /chatglm/i, /智谱/i] },
+  { category: 'Kimi / Moonshot', patterns: [/kimi/i, /moonshot/i] },
+  { category: '豆包 Doubao', patterns: [/doubao/i, /豆包/i] },
+  { category: 'MiniMax', patterns: [/minimax/i, /abab/i] },
+  { category: 'Grok', patterns: [/\bgrok/i] },
+  { category: 'Llama / Meta', patterns: [/llama/i, /\bmeta[-_.\s]/i] },
+  { category: 'Mistral', patterns: [/mistral/i, /mixtral/i, /codestral/i] },
+  { category: 'Yi / 零一万物', patterns: [/(^|[-_.\s])yi[-_.\s]/i, /零一万物/i] },
+  { category: '图像生成', patterns: [/dall[-_.\s]?e/i, /midjourney/i, /flux/i, /stable[-_.\s]?diffusion/i, /imagen/i, /image/i] },
+  { category: '视频生成', patterns: [/sora/i, /veo/i, /kling/i, /可灵/i, /video/i, /wan[-_.\s]?2/i] },
+  { category: '语音与音频', patterns: [/whisper/i, /tts/i, /speech/i, /audio/i, /suno/i] },
+  { category: '向量与重排', patterns: [/embedding/i, /embed/i, /rerank/i, /bge[-_.\s]/i] }
+];
+
+export function classifyModel(modelName) {
+  const name = cleanString(modelName);
+  const match = MODEL_FAMILIES.find(family => family.patterns.some(pattern => pattern.test(name)));
+  return match?.category || '其他模型';
+}
+
+export const CATEGORY_PRIORITY = [
+  '推荐', 'GPT / OpenAI', 'Claude', 'Gemini', 'DeepSeek', '通义千问 Qwen',
+  '智谱 GLM', 'Kimi / Moonshot', '豆包 Doubao', 'MiniMax', 'Grok',
+  'Llama / Meta', 'Mistral', 'Yi / 零一万物', '图像生成', '视频生成',
+  '语音与音频', '向量与重排', '其他模型'
+];
+
+export function categoryRank(category) {
+  const name = cleanString(category).toLowerCase();
+  const index = CATEGORY_PRIORITY.findIndex(value => name.includes(value.toLowerCase()));
+  return index === -1 ? CATEGORY_PRIORITY.length - 1 : index;
+}
+
+export function calculateModelPrices(model, exchangeRate, groupRatio) {
+  const rate = positiveNumber(exchangeRate);
+  const multiplier = positiveNumber(groupRatio);
+  if (rate === null) throw new RatioFetchError('美元汇率必须大于 0');
+  if (multiplier === null) throw new RatioFetchError('分组倍率必须大于 0');
+  if (model?.billingType !== 'tokens') return null;
+
+  const baseInputUsd = nonNegativeNumber(model.directInputUsd, null)
+    ?? nonNegativeNumber(model.modelRatio, 0) * NEW_API_QUOTA_PRICE_USD_PER_MILLION;
+  const baseOutputUsd = nonNegativeNumber(model.directOutputUsd, null)
+    ?? baseInputUsd * nonNegativeNumber(model.completionRatio, 1);
+  const baseCacheUsd = nonNegativeNumber(model.directCacheUsd, null)
+    ?? baseInputUsd * nonNegativeNumber(model.cacheRatio, 1);
+
+  return {
+    baseInputPrice: baseInputUsd * rate,
+    baseCacheInputPrice: baseCacheUsd * rate,
+    baseOutputPrice: baseOutputUsd * rate,
+    actualInputPrice: baseInputUsd * rate * multiplier,
+    actualCacheInputPrice: baseCacheUsd * rate * multiplier,
+    actualOutputPrice: baseOutputUsd * rate * multiplier
+  };
+}
+
+function sameSite(left, right) {
+  try {
+    return new URL(left).origin.toLowerCase() === new URL(right).origin.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+export function mergeCatalogIntoSnapshot({
+  snapshot,
+  catalog,
+  selectedModels,
+  group = 'default',
+  exchangeRate = 7.2,
+  provider,
+  categoryMode = 'auto',
+  fixedCategory = '自动抓取'
+}) {
+  if (!snapshot || !Array.isArray(snapshot.entries)) throw new RatioFetchError('现有价格 JSON 格式无效');
+  if (!catalog || !Array.isArray(catalog.models)) throw new RatioFetchError('抓取结果格式无效');
+  const providerName = cleanString(provider) || new URL(catalog.baseUrl).hostname;
+  const fixedCategoryName = cleanString(fixedCategory) || `${providerName} 自动抓取`;
+  const selected = new Set(Array.isArray(selectedModels) ? selectedModels : []);
+  const groupRatio = positiveNumber(catalog.groupRatio?.[group], 1);
+  const now = Date.now();
+  const nextEntries = snapshot.entries.map(entry => ({ ...entry }));
+  let added = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  for (const model of catalog.models) {
+    if (!selected.has(model.modelName)) continue;
+    if (model.billingType !== 'tokens') {
+      skipped += 1;
+      continue;
+    }
+    if (model.enableGroups.length > 0 && !model.enableGroups.includes(group)) {
+      skipped += 1;
+      continue;
+    }
+    const prices = calculateModelPrices(model, exchangeRate, groupRatio);
+    const category = categoryMode === 'fixed' ? fixedCategoryName : classifyModel(model.modelName);
+    const entryData = {
+      modelName: model.modelName,
+      category,
+      provider: providerName,
+      relayAddress: catalog.baseUrl,
+      useMultiplier: true,
+      multiplier: groupRatio,
+      baseInputPrice: prices.baseInputPrice,
+      baseCacheInputPrice: prices.baseCacheInputPrice,
+      baseOutputPrice: prices.baseOutputPrice,
+      updatedAt: now
+    };
+    const index = nextEntries.findIndex(entry =>
+      cleanString(entry.modelName).toLowerCase() === model.modelName.toLowerCase()
+      && sameSite(entry.relayAddress, catalog.baseUrl)
+    );
+    if (index >= 0) {
+      nextEntries[index] = { ...nextEntries[index], ...entryData };
+      updated += 1;
+    } else {
+      nextEntries.push({ id: `${now}-${added}-${Math.random().toString(36).slice(2, 10)}`, ...entryData, createdAt: now });
+      added += 1;
+    }
+  }
+
+  return {
+    snapshot: {
+      exportedAt: new Date().toISOString(),
+      version: 2,
+      entries: nextEntries
+    },
+    added,
+    updated,
+    skipped,
+    selected: selected.size
+  };
+}

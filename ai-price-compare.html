@@ -1595,9 +1595,39 @@
       return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     }
 
+    function categorySortScore(category) {
+      const name = category.toLowerCase();
+      const rules = [
+        [/^(推荐|精选|首选)/, 0],
+        [/gpt|openai|codex/, 10],
+        [/claude|fable/, 20],
+        [/gemini|gemma/, 30],
+        [/deepseek/, 40],
+        [/qwen|通义|千问/, 50],
+        [/glm|智谱/, 60],
+        [/kimi|moonshot/, 70],
+        [/doubao|豆包/, 80],
+        [/minimax/, 90],
+        [/grok/, 100],
+        [/llama|meta/, 110],
+        [/mistral|mixtral|codestral/, 120],
+        [/图像|image|绘图/, 200],
+        [/视频|video/, 210],
+        [/语音|音频|audio|tts/, 220],
+        [/向量|embedding|重排|rerank/, 230]
+      ];
+      const family = rules.find(([pattern]) => pattern.test(name))?.[1] ?? 900;
+      const tier = /高档|稳定/.test(name) ? -0.2 : /低档|便宜/.test(name) ? 0.2 : 0;
+      return family + tier;
+    }
+
+    function compareCategories(left, right) {
+      return categorySortScore(left) - categorySortScore(right)
+        || left.localeCompare(right, 'zh-CN', { numeric: true });
+    }
+
     function getCategories(source = entries) {
-      return [...new Set(source.map(entry => entry.category))]
-        .sort((a, b) => a.localeCompare(b, 'zh-CN'));
+      return [...new Set(source.map(entry => entry.category))].sort(compareCategories);
     }
 
     function actualPrice(entry, field) {

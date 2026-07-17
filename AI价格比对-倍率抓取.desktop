@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=AI价格比对－倍率抓取
+Comment=从 New API 等兼容站点抓取模型与分组倍率
+Exec=/home/zhuxi/AI价格比对工具/scripts/倍率抓取工具.sh
+Icon=network-server
+Terminal=true
+Categories=Development;
+StartupNotify=true
