@@ -93,7 +93,7 @@ export function extractPublishedSiteCandidates(snapshot) {
     }
     let group = grouped.get(siteUrl.origin);
     if (!group) {
-      group = { siteUrl: siteUrl.origin, names: new Map(), totalEntries: 0 };
+      group = { siteUrl: siteUrl.origin, names: new Map(), totalEntries: 0, creditPerCny: 1 };
       grouped.set(siteUrl.origin, group);
     }
     const name = group.names.get(provider) || { count: 0, latest: 0 };
@@ -101,6 +101,11 @@ export function extractPublishedSiteCandidates(snapshot) {
     name.latest = Math.max(name.latest, Number(entry.updatedAt) || Number(entry.createdAt) || 0);
     group.names.set(provider, name);
     group.totalEntries += 1;
+    const rechargeMatch = provider.match(/\b1\s*[:：]\s*(\d+(?:\.\d+)?)\s*(?:充值|美刀|美元|额度)?/i);
+    const inferredCredit = Number(rechargeMatch?.[1]);
+    if (Number.isFinite(inferredCredit) && inferredCredit > group.creditPerCny) {
+      group.creditPerCny = inferredCredit;
+    }
   }
 
   return [...grouped.values()].map(group => {
@@ -109,7 +114,12 @@ export function extractPublishedSiteCandidates(snapshot) {
       || right[1].latest - left[1].latest
       || left[0].localeCompare(right[0], 'zh-CN', { numeric: true })
     )[0];
-    return { name, siteUrl: group.siteUrl, entryCount: group.totalEntries };
+    return {
+      name,
+      siteUrl: group.siteUrl,
+      entryCount: group.totalEntries,
+      creditPerCny: group.creditPerCny
+    };
   }).sort((left, right) => left.name.localeCompare(right.name, 'zh-CN', { numeric: true }));
 }
 
@@ -215,6 +225,7 @@ export function createRatioFetchServer({
           sourceName: path.basename(latest.filePath),
           recognized: candidates.length,
           imported: imported.added.length,
+          updated: imported.updated.length,
           skipped: imported.skipped,
           sites: imported.sites,
           addedSites: imported.added
@@ -263,6 +274,7 @@ export function createRatioFetchServer({
           selectedModels: body.selectedModels,
           group: body.group,
           exchangeRate: body.exchangeRate,
+          creditPerCny: body.creditPerCny,
           provider: body.provider,
           categoryMode: body.categoryMode,
           fixedCategory: body.fixedCategory
@@ -296,6 +308,7 @@ export function createRatioFetchServer({
             selectedModels: item.selectedModels,
             group: item.group,
             exchangeRate: item.exchangeRate,
+            creditPerCny: item.creditPerCny,
             provider: item.provider,
             categoryMode: item.categoryMode,
             fixedCategory: item.fixedCategory

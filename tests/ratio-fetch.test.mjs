@@ -85,6 +85,18 @@ test('auto detection falls back to One Hub endpoints', async () => {
   assert.equal(catalog.groupRatio.vip, 0.75);
 });
 
+test('reports connection timeouts clearly instead of a generic fetch failure', async () => {
+  const timeout = new TypeError('fetch failed', { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } });
+  await assert.rejects(
+    fetchRatioCatalog({
+      siteUrl: 'https://slow.example',
+      siteType: 'new-api',
+      fetchImpl: async () => { throw timeout; }
+    }),
+    /连接目标站点超时/
+  );
+});
+
 test('classifies models and calculates New API ratio prices', () => {
   assert.equal(classifyModel('claude-fable-5'), 'Claude');
   assert.equal(classifyModel('qwen3-max'), '通义千问 Qwen');
@@ -131,6 +143,28 @@ test('merges selected models without persisting access tokens', () => {
   assert.doesNotMatch(JSON.stringify(result.snapshot), /token|secret|authorization/i);
 });
 
+test('applies each site recharge credit ratio to the effective CNY price', () => {
+  const snapshot = { exportedAt: '2026-07-17T00:00:00.000Z', version: 2, entries: [] };
+  const catalog = {
+    baseUrl: 'https://bonus.example', sourceType: 'new-api',
+    groupRatio: { default: 0.5 }, usableGroup: { default: '默认' },
+    models: [{
+      modelName: 'gpt-bonus', billingType: 'tokens', modelRatio: 2.5,
+      completionRatio: 4, cacheRatio: null, directInputUsd: null,
+      directOutputUsd: null, directCacheUsd: null, enableGroups: ['default']
+    }]
+  };
+  const result = mergeCatalogIntoSnapshot({
+    snapshot, catalog, selectedModels: ['gpt-bonus'], group: 'default',
+    provider: '充值赠送站', creditPerCny: 10, categoryMode: 'auto'
+  });
+  const [entry] = result.snapshot.entries;
+  assert.equal(entry.baseInputPrice, 0.5);
+  assert.equal(entry.baseOutputPrice, 2);
+  assert.equal(entry.multiplier, 0.5);
+  assert.equal(entry.baseInputPrice * entry.multiplier, 0.25);
+});
+
 test('local ratio server keeps the token out of its response and rejects foreign origins', async t => {
   let upstreamAuthorization = '';
   const app = createRatioFetchServer({
@@ -173,7 +207,7 @@ test('saved site tokens are encrypted at rest and blank edits preserve them', as
   const store = new SavedSitesStore({ configDirectory });
   const saved = await store.saveSite({
     name: '测试站', siteUrl: 'https://saved.example/register', accessToken: 'persisted-secret',
-    userId: '8', siteType: 'new-api', tokenMode: 'bearer'
+    userId: '8', siteType: 'new-api', tokenMode: 'bearer', creditPerCny: 10
   });
 
   const [storeText, storeMode, keyMode] = await Promise.all([
@@ -185,17 +219,18 @@ test('saved site tokens are encrypted at rest and blank edits preserve them', as
   assert.equal(storeMode.mode & 0o777, 0o600);
   assert.equal(keyMode.mode & 0o777, 0o600);
   assert.equal((await store.listSites())[0].hasAccessToken, true);
+  assert.equal((await store.listSites())[0].creditPerCny, 10);
   assert.equal((await store.getSiteWithToken(saved.id)).accessToken, 'persisted-secret');
 
   await store.saveSite({
     id: saved.id, name: '测试站新名称', siteUrl: 'https://saved.example', accessToken: '',
-    userId: '8', siteType: 'new-api', tokenMode: 'bearer'
+    userId: '8', siteType: 'new-api', tokenMode: 'bearer', creditPerCny: 10
   });
   assert.equal((await store.getSiteWithToken(saved.id)).accessToken, 'persisted-secret');
 
   await store.saveSite({
     id: saved.id, name: '测试站新名称', siteUrl: 'https://saved.example', clearAccessToken: true,
-    userId: '8', siteType: 'new-api', tokenMode: 'bearer'
+    userId: '8', siteType: 'new-api', tokenMode: 'bearer', creditPerCny: 10
   });
   assert.equal((await store.getSiteWithToken(saved.id)).accessToken, '');
 });
@@ -205,13 +240,13 @@ test('extracts and deduplicates saved sites from existing price data', () => {
     { provider: 'Niko', relayAddress: 'https://niko.example/register', updatedAt: 1 },
     { provider: 'NikoAPI', relayAddress: 'https://niko.example/dashboard', updatedAt: 2 },
     { provider: 'NikoAPI', relayAddress: 'https://niko.example/sign-up', updatedAt: 3 },
-    { provider: '另一个站', relayAddress: 'relay.example/path', updatedAt: 4 },
+    { provider: '另一个站 1:10充值', relayAddress: 'relay.example/path', updatedAt: 4 },
     { provider: '', relayAddress: 'https://ignored.example' },
     { provider: '坏地址', relayAddress: 'not a valid host %' }
   ] });
   assert.deepEqual(candidates, [
-    { name: '另一个站', siteUrl: 'https://relay.example', entryCount: 1 },
-    { name: 'NikoAPI', siteUrl: 'https://niko.example', entryCount: 3 }
+    { name: '另一个站 1:10充值', siteUrl: 'https://relay.example', entryCount: 1, creditPerCny: 10 },
+    { name: 'NikoAPI', siteUrl: 'https://niko.example', entryCount: 3, creditPerCny: 1 }
   ]);
 });
 

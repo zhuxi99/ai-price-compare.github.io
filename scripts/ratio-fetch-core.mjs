@@ -116,7 +116,19 @@ async function fetchJson(fetchImpl, url, headers, timeoutMs) {
       throw new RatioFetchError('目标接口返回的 JSON 无法解析');
     }
   } catch (error) {
-    if (error?.name === 'AbortError') throw new RatioFetchError('连接目标站点超时');
+    const networkCode = error?.cause?.code || error?.cause?.cause?.code || '';
+    if (error?.name === 'AbortError' || /TIMEOUT/i.test(networkCode)) {
+      throw new RatioFetchError('连接目标站点超时');
+    }
+    if (/ENOTFOUND|EAI_AGAIN/i.test(networkCode)) {
+      throw new RatioFetchError('目标站点域名暂时无法解析');
+    }
+    if (/CERT|TLS|SSL/i.test(networkCode)) {
+      throw new RatioFetchError('目标站点的 HTTPS 证书或 TLS 连接异常');
+    }
+    if (/ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH/i.test(networkCode)) {
+      throw new RatioFetchError('目标站点拒绝连接或网络不可达');
+    }
     if (error instanceof RatioFetchError) throw error;
     throw new RatioFetchError(`无法连接目标站点：${error?.message || '网络错误'}`);
   } finally {
@@ -344,7 +356,8 @@ export function mergeCatalogIntoSnapshot({
   catalog,
   selectedModels,
   group = 'default',
-  exchangeRate = 7.2,
+  exchangeRate,
+  creditPerCny = 1,
   provider,
   categoryMode = 'auto',
   fixedCategory = '自动抓取'
@@ -355,6 +368,8 @@ export function mergeCatalogIntoSnapshot({
   const fixedCategoryName = cleanString(fixedCategory) || `${providerName} 自动抓取`;
   const selected = new Set(Array.isArray(selectedModels) ? selectedModels : []);
   const groupRatio = positiveNumber(catalog.groupRatio?.[group], 1);
+  const normalizedCreditPerCny = positiveNumber(creditPerCny, 1);
+  const cnyPerUsdCredit = positiveNumber(exchangeRate, 1 / normalizedCreditPerCny);
   const now = Date.now();
   const nextEntries = snapshot.entries.map(entry => ({ ...entry }));
   let added = 0;
@@ -371,7 +386,7 @@ export function mergeCatalogIntoSnapshot({
       skipped += 1;
       continue;
     }
-    const prices = calculateModelPrices(model, exchangeRate, groupRatio);
+    const prices = calculateModelPrices(model, cnyPerUsdCredit, groupRatio);
     const category = categoryMode === 'fixed' ? fixedCategoryName : classifyModel(model.modelName);
     const entryData = {
       modelName: model.modelName,

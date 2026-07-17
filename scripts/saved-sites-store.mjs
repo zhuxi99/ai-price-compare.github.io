@@ -13,6 +13,11 @@ function cleanString(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function positiveNumber(value, fallback = 1) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
 function publicSite(site) {
   return {
     id: site.id,
@@ -21,6 +26,7 @@ function publicSite(site) {
     userId: site.userId,
     siteType: site.siteType,
     tokenMode: site.tokenMode,
+    creditPerCny: positiveNumber(site.creditPerCny),
     hasAccessToken: Boolean(site.accessTokenEncrypted?.data),
     createdAt: site.createdAt,
     updatedAt: site.updatedAt
@@ -146,6 +152,7 @@ export class SavedSitesStore {
       userId,
       siteType,
       tokenMode,
+      creditPerCny: positiveNumber(input?.creditPerCny, positiveNumber(existing?.creditPerCny)),
       accessTokenEncrypted,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now
@@ -161,6 +168,7 @@ export class SavedSitesStore {
     const sitesByUrl = new Map(store.sites.map(site => [site.siteUrl, site]));
     const matched = [];
     const added = [];
+    const updated = [];
     let skipped = 0;
 
     for (const input of Array.isArray(inputs) ? inputs : []) {
@@ -179,6 +187,12 @@ export class SavedSitesStore {
 
       const existing = sitesByUrl.get(siteUrl);
       if (existing) {
+        const inferredCredit = positiveNumber(input?.creditPerCny);
+        if (existing.creditPerCny === undefined && inferredCredit > 1) {
+          existing.creditPerCny = inferredCredit;
+          existing.updatedAt = Date.now();
+          updated.push(existing);
+        }
         matched.push(existing);
         skipped += 1;
         continue;
@@ -192,6 +206,7 @@ export class SavedSitesStore {
         userId: '',
         siteType: 'auto',
         tokenMode: 'bearer',
+        creditPerCny: positiveNumber(input?.creditPerCny),
         accessTokenEncrypted: null,
         createdAt: now,
         updatedAt: now
@@ -202,10 +217,11 @@ export class SavedSitesStore {
       added.push(site);
     }
 
-    if (added.length > 0) await this.writeStore(store);
+    if (added.length > 0 || updated.length > 0) await this.writeStore(store);
     return {
       sites: matched.map(publicSite),
       added: added.map(publicSite),
+      updated: updated.map(publicSite),
       skipped
     };
   }

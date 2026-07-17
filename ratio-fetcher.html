@@ -338,6 +338,11 @@
                 <option value="one-hub">One Hub / Done Hub</option>
               </select>
             </div>
+            <div class="field">
+              <label for="creditPerCny">充值到账额度（美元/1元）</label>
+              <input id="creditPerCny" class="control" type="number" min="0.01" step="0.01" value="1" inputmode="decimal" required>
+              <span class="hint">普通 1:1 填 1；充值 1 元到账 10 美元额度就填 10。</span>
+            </div>
             <div class="field wide">
               <label for="accessToken">访问令牌</label>
               <div class="secret-wrap">
@@ -379,10 +384,6 @@
       </div>
       <div class="card-body">
         <div class="form-grid">
-          <div class="field">
-            <label for="exchangeRate">美元兑人民币</label>
-            <input id="exchangeRate" class="control" type="number" min="0.01" step="0.01" value="7.20" inputmode="decimal">
-          </div>
           <div class="field wide">
             <label>分类方式</label>
             <div class="radio-row">
@@ -410,6 +411,7 @@
                 <th>模型倍率</th>
                 <th>输出倍率</th>
                 <th>分组倍率</th>
+                <th>实付倍率</th>
                 <th>输入价</th>
                 <th>输出价</th>
               </tr>
@@ -418,7 +420,7 @@
           </table>
           <div id="emptyModels" class="empty" hidden>没有符合筛选条件的模型</div>
         </div>
-        <p class="hint">价格按 New API 规则换算：倍率 1 对应 2 美元 / 1M tokens，再乘分组倍率和美元汇率。接口未提供缓存倍率时，缓存输入价暂按普通输入价计算；按次计费模型不会写入当前价格表。</p>
+        <p class="hint">价格按 New API 规则换算：倍率 1 对应 2 美元额度 / 1M tokens；实付倍率 = 分组倍率 ÷ 每 1 元到账的美元额度。普通 1:1 不变，充值 1→10 会再除以 10。接口未提供缓存倍率时，缓存输入价暂按普通输入价计算；按次计费模型不会写入当前价格表。</p>
       </div>
     </section>
 
@@ -464,8 +466,8 @@
       'snapshotPill', 'selectAllSites', 'clearSiteSelection', 'importExistingSites', 'addSiteButton', 'siteCount',
       'fetchSelectedButton', 'siteList', 'siteLibraryEmpty', 'siteLibraryStatus', 'siteForm',
       'siteEditorTitle', 'editingSiteId', 'siteName', 'siteUrl', 'siteType', 'accessToken',
-      'userId', 'tokenMode', 'revealToken', 'clearTokenField', 'clearAccessToken',
-      'cancelSiteButton', 'saveSiteButton', 'siteFormStatus', 'resultCard', 'exchangeRate',
+      'creditPerCny', 'userId', 'tokenMode', 'revealToken', 'clearTokenField', 'clearAccessToken',
+      'cancelSiteButton', 'saveSiteButton', 'siteFormStatus', 'resultCard',
       'fetchedSites', 'modelSearch', 'selectVisible', 'clearSelection', 'resultMeta',
       'masterCheckbox', 'modelRows', 'emptyModels', 'saveCard', 'saveSummary',
       'saveButton', 'saveStatus'
@@ -557,7 +559,7 @@
         domain.textContent = siteHost(site.siteUrl);
         const tokenState = document.createElement('span');
         tokenState.className = 'token-state';
-        tokenState.textContent = site.hasAccessToken ? '已保存令牌' : '无需令牌 / 未保存';
+        tokenState.textContent = `${site.hasAccessToken ? '已保存令牌' : '无需令牌 / 未保存'} · 1元→$${formatNumber(site.creditPerCny, 2)}额度`;
         copy.append(name, domain, tokenState);
         selectButton.append(dot, copy);
         selectButton.addEventListener('click', () => {
@@ -616,6 +618,7 @@
       elements.siteName.value = site?.name || '';
       elements.siteUrl.value = site?.siteUrl || '';
       elements.siteType.value = site?.siteType || 'auto';
+      elements.creditPerCny.value = site?.creditPerCny || 1;
       elements.userId.value = site?.userId || '';
       elements.tokenMode.value = site?.tokenMode || 'bearer';
       elements.clearAccessToken.checked = false;
@@ -665,7 +668,7 @@
     }
 
     function calculatePrice(result, model) {
-      const exchange = Number(elements.exchangeRate.value) || 0;
+      const exchange = 1 / (Number(result.site.creditPerCny) || 1);
       const groupRatio = resultGroupRatio(result);
       const baseInput = model.directInputUsd ?? model.modelRatio * 2;
       const baseOutput = model.directOutputUsd ?? baseInput * model.completionRatio;
@@ -747,6 +750,7 @@
         appendCell(row, `×${formatNumber(model.modelRatio)}`);
         appendCell(row, `×${formatNumber(model.completionRatio)}`);
         appendCell(row, `×${formatNumber(resultGroupRatio(result))}`);
+        appendCell(row, `×${formatNumber(resultGroupRatio(result) / (Number(result.site.creditPerCny) || 1))}`);
         const prices = available ? calculatePrice(result, model) : null;
         appendCell(row, prices ? `¥${formatNumber(prices.input, 2)}` : model.billingType === 'times' ? '按次计费' : '分组不可用', prices ? 'price' : '');
         appendCell(row, prices ? `¥${formatNumber(prices.output, 2)}` : '—', prices ? 'price' : '');
@@ -783,7 +787,7 @@
         name.textContent = result.site.name;
         const meta = document.createElement('div');
         meta.className = 'fetched-site-meta';
-        meta.textContent = `${result.catalog.sourceType === 'one-hub' ? 'One Hub 系' : 'New API 系'} · ${result.catalog.models.length} 个模型`;
+        meta.textContent = `${result.catalog.sourceType === 'one-hub' ? 'One Hub 系' : 'New API 系'} · ${result.catalog.models.length} 个模型 · 1元→$${formatNumber(result.site.creditPerCny, 2)}额度`;
         copy.append(name, meta);
         const select = document.createElement('select');
         select.className = 'control compact-control';
@@ -833,6 +837,7 @@
         name: elements.siteName.value.trim(),
         siteUrl: elements.siteUrl.value.trim(),
         siteType: elements.siteType.value,
+        creditPerCny: Number(elements.creditPerCny.value),
         accessToken: elements.accessToken.value,
         userId: elements.userId.value.trim(),
         tokenMode: elements.tokenMode.value,
@@ -877,9 +882,9 @@
         const sitesToSelect = automatic ? data.addedSites : data.sites;
         for (const site of sitesToSelect) state.selectedSites.add(site.id);
         await loadSites({ openEditorWhenEmpty: false });
-        if (data.imported > 0) {
+        if (data.imported > 0 || data.updated > 0) {
           setStatus(elements.siteLibraryStatus,
-            `已自动从 ${data.sourceName} 识别 ${data.recognized} 个站点，新导入 ${data.imported} 个到本地抓取工具。需要鉴权的站点再点铅笔补令牌即可。`,
+            `已自动从 ${data.sourceName} 识别 ${data.recognized} 个站点，新导入 ${data.imported} 个，自动补充充值比例 ${data.updated} 个。需要鉴权的站点再点铅笔补令牌即可。`,
             'success');
         } else if (!automatic) {
           setStatus(elements.siteLibraryStatus,
@@ -924,7 +929,6 @@
       }
     });
 
-    elements.exchangeRate.addEventListener('input', renderModels);
     elements.modelSearch.addEventListener('input', renderModels);
     elements.selectVisible.addEventListener('click', () => {
       for (const key of state.visibleSelectable) state.selectedModels.add(key);
@@ -944,10 +948,6 @@
 
     elements.saveButton.addEventListener('click', async () => {
       setStatus(elements.saveStatus);
-      const exchangeRate = Number(elements.exchangeRate.value);
-      if (!Number.isFinite(exchangeRate) || exchangeRate <= 0) {
-        return setStatus(elements.saveStatus, '美元汇率必须大于 0', 'error');
-      }
       setLoading(elements.saveButton, true, '正在合并并保存…');
       try {
         const categoryMode = document.querySelector('input[name="categoryMode"]:checked').value;
@@ -957,7 +957,7 @@
             .filter(model => state.selectedModels.has(modelKey(result, model)))
             .map(model => model.modelName),
           group: result.group,
-          exchangeRate,
+          creditPerCny: result.site.creditPerCny,
           provider: result.site.name,
           categoryMode,
           fixedCategory: `${result.site.name} 自动抓取`
