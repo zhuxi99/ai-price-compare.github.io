@@ -164,6 +164,16 @@
     .status.visible { display: block; }
     .status.error { color: #8f3838; background: var(--danger-soft); border: 1px solid #efcfca; }
     .status.success { color: #46604b; background: #f0f7ee; border: 1px solid #d5e7d1; }
+    .status.warning { color: #735f20; background: var(--yellow-soft); border: 1px solid #eadb9d; }
+
+    .fetch-attention { margin-top: 15px; padding: 14px; background: #fffdf3; border: 1px solid #eadfae; border-radius: 11px; }
+    .fetch-attention-title { margin: 0 0 10px; color: #66551e; font-size: 14px; }
+    .attention-list { display: grid; gap: 8px; }
+    .attention-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 11px; background: #fff; border: 1px solid #eee6c8; border-radius: 9px; }
+    .attention-item.failed { border-color: #efd8d3; }
+    .attention-name { display: block; font-weight: 800; }
+    .attention-message { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
+    .attention-item .button { min-height: 34px; padding: 6px 11px; white-space: nowrap; }
 
     .result-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 18px; }
     .result-toolbar .search { flex: 1 1 280px; }
@@ -233,6 +243,7 @@
     .site-name { display: block; overflow: hidden; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
     .site-domain { display: block; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
     .token-state { color: #6c713f; font-size: 11px; }
+    .token-state.missing { color: #9a7224; }
     .site-option-actions { display: flex; gap: 2px; padding-right: 10px; }
     .icon-button { width: 32px; height: 32px; padding: 0; color: #69736b; background: transparent; border: 0; border-radius: 50%; }
     .icon-button:hover { color: #425e48; background: rgba(255, 255, 255, .82); }
@@ -278,6 +289,8 @@
       .library-toolbar .button { flex: 1 1 calc(50% - 5px); }
       .site-list { grid-template-columns: 1fr; }
       .fetched-site { grid-template-columns: 1fr; }
+      .attention-item { grid-template-columns: 1fr; }
+      .attention-item .button { width: 100%; }
     }
   </style>
 </head>
@@ -316,6 +329,10 @@
         <div id="siteList" class="site-list"></div>
         <div id="siteLibraryEmpty" class="library-empty" hidden>还没有保存站点。点击“读取已有数据”可自动提取站点名称和网址，只需再补需要的访问令牌。</div>
         <div id="siteLibraryStatus" class="status" role="status"></div>
+        <div id="fetchAttention" class="fetch-attention" hidden>
+          <h4 id="fetchAttentionTitle" class="fetch-attention-title">待处理站点</h4>
+          <div id="fetchAttentionList" class="attention-list"></div>
+        </div>
 
         <form id="siteForm" class="site-editor" hidden>
           <h4 id="siteEditorTitle" class="site-editor-title">添加常用站点</h4>
@@ -350,7 +367,7 @@
                 <input id="accessToken" class="control" type="password" autocomplete="new-password" spellcheck="false" placeholder="可留空；需要鉴权的站点再填写">
                 <button id="revealToken" class="reveal-button" type="button">显示</button>
               </div>
-              <span class="hint">编辑站点时留空会保留原令牌；新令牌会覆盖旧令牌。Sub2API 请填写登录 JWT，工具会自动读取账号中的 API Key。</span>
+              <span class="hint">编辑站点时留空会保留原令牌；新令牌会覆盖旧令牌。New API 可填写个人资料里的访问令牌；Sub2API 需要网页登录 JWT，不是 sk- API Key，工具会再自动读取账号中的模型 Key。</span>
             </div>
             <div class="field">
               <label for="userId">用户 ID（可选）</label>
@@ -465,7 +482,8 @@
 
     const elements = Object.fromEntries([
       'snapshotPill', 'selectAllSites', 'clearSiteSelection', 'importExistingSites', 'addSiteButton', 'siteCount',
-      'fetchSelectedButton', 'siteList', 'siteLibraryEmpty', 'siteLibraryStatus', 'siteForm',
+      'fetchSelectedButton', 'siteList', 'siteLibraryEmpty', 'siteLibraryStatus', 'fetchAttention',
+      'fetchAttentionTitle', 'fetchAttentionList', 'siteForm',
       'siteEditorTitle', 'editingSiteId', 'siteName', 'siteUrl', 'siteType', 'accessToken',
       'creditPerCny', 'userId', 'tokenMode', 'revealToken', 'clearTokenField', 'clearAccessToken',
       'cancelSiteButton', 'saveSiteButton', 'siteFormStatus', 'resultCard',
@@ -478,6 +496,7 @@
       sites: [],
       selectedSites: new Set(),
       results: [],
+      failedResults: [],
       selectedModels: new Set(),
       visibleSelectable: []
     };
@@ -559,8 +578,8 @@
         domain.className = 'site-domain';
         domain.textContent = siteHost(site.siteUrl);
         const tokenState = document.createElement('span');
-        tokenState.className = 'token-state';
-        tokenState.textContent = `${site.hasAccessToken ? '已保存令牌' : '无需令牌 / 未保存'} · 1元→$${formatNumber(site.creditPerCny, 2)}额度`;
+        tokenState.className = `token-state${site.hasAccessToken ? '' : ' missing'}`;
+        tokenState.textContent = `${site.hasAccessToken ? '已保存令牌' : '未保存令牌'} · 1元→$${formatNumber(site.creditPerCny, 2)}额度`;
         copy.append(name, domain, tokenState);
         selectButton.append(dot, copy);
         selectButton.addEventListener('click', () => {
@@ -610,7 +629,7 @@
       elements.revealToken.textContent = '显示';
     }
 
-    function openSiteEditor(site = null) {
+    function openSiteEditor(site = null, { focusToken = false } = {}) {
       elements.siteForm.reset();
       setStatus(elements.siteFormStatus);
       resetTokenInput();
@@ -628,8 +647,50 @@
         ? '留空保留原令牌；输入新值则替换'
         : '可留空；需要鉴权的站点再填写';
       elements.siteForm.hidden = false;
-      setTimeout(() => elements.siteName.focus(), 0);
+      setTimeout(() => (focusToken ? elements.accessToken : elements.siteName).focus(), 0);
       elements.siteForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function renderFetchAttention(results = state.failedResults) {
+      state.failedResults = results;
+      elements.fetchAttentionList.replaceChildren();
+      const tokenProblems = results.filter(result =>
+        result.reason === 'missing-token' || result.reason === 'invalid-token');
+      const failed = results.filter(result =>
+        result.reason !== 'missing-token' && result.reason !== 'invalid-token');
+      elements.fetchAttention.hidden = results.length === 0;
+      if (results.length === 0) return;
+      elements.fetchAttentionTitle.textContent = tokenProblems.length
+        ? `待补令牌 ${tokenProblems.length} 个${failed.length ? ` · 其他问题 ${failed.length} 个` : ''}`
+        : `需要检查 ${failed.length} 个站点`;
+
+      for (const result of [...tokenProblems, ...failed]) {
+        const isTokenProblem = result.reason === 'missing-token' || result.reason === 'invalid-token';
+        const item = document.createElement('div');
+        item.className = `attention-item${isTokenProblem ? '' : ' failed'}`;
+        item.dataset.siteId = result.site.id;
+        const copy = document.createElement('div');
+        const name = document.createElement('span');
+        name.className = 'attention-name';
+        name.textContent = result.site.name;
+        const message = document.createElement('span');
+        message.className = 'attention-message';
+        message.textContent = result.message;
+        copy.append(name, message);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `button${isTokenProblem ? ' primary' : ''}`;
+        button.textContent = result.reason === 'missing-token'
+          ? '填写并保存令牌'
+          : result.reason === 'invalid-token' ? '更新令牌' : '编辑站点';
+        button.addEventListener('click', () => {
+          if (result.reason === 'missing-token') openSiteEditor(result.site, { focusToken: true });
+          else if (result.reason === 'invalid-token') openSiteEditor(result.site, { focusToken: true });
+          else openSiteEditor(result.site);
+        });
+        item.append(copy, button);
+        elements.fetchAttentionList.appendChild(item);
+      }
     }
 
     function closeSiteEditor() {
@@ -850,6 +911,8 @@
       try {
         const data = await api('/api/save-site', { method: 'POST', body: JSON.stringify(body) });
         state.selectedSites.add(data.site.id);
+        state.failedResults = state.failedResults.filter(result => result.site.id !== data.site.id);
+        renderFetchAttention();
         closeSiteEditor();
         await loadSites({ openEditorWhenEmpty: false });
         setStatus(elements.siteLibraryStatus, `已保存「${data.site.name}」，以后直接点击站点框即可抓取。`, 'success');
@@ -908,6 +971,7 @@
     elements.fetchSelectedButton.addEventListener('click', async () => {
       setStatus(elements.siteLibraryStatus);
       setStatus(elements.saveStatus);
+      renderFetchAttention([]);
       setLoading(elements.fetchSelectedButton, true, `正在抓取 ${state.selectedSites.size} 个站点…`);
       try {
         const data = await api('/api/fetch-sites', {
@@ -916,15 +980,19 @@
         });
         const successes = data.results.filter(result => result.ok);
         const failures = data.results.filter(result => !result.ok);
+        const tokenProblems = failures.filter(result =>
+          result.reason === 'missing-token' || result.reason === 'invalid-token');
+        const otherFailures = failures.filter(result =>
+          result.reason !== 'missing-token' && result.reason !== 'invalid-token');
+        renderFetchAttention(failures);
         if (successes.length) showBatchResults(data.results);
         else {
           elements.resultCard.hidden = true;
           elements.saveCard.hidden = true;
         }
-        const details = failures.map(result => `${result.site.name}：${result.message}`).join('\n');
         setStatus(elements.siteLibraryStatus,
-          `批量抓取完成：成功 ${successes.length} 个，失败 ${failures.length} 个。${details ? `\n${details}` : ''}`,
-          successes.length ? 'success' : 'error');
+          `批量抓取完成：成功 ${successes.length} 个，待补令牌 ${tokenProblems.length} 个，其他失败 ${otherFailures.length} 个。`,
+          otherFailures.length ? (successes.length ? 'warning' : 'error') : tokenProblems.length ? 'warning' : 'success');
       } catch (error) {
         setStatus(elements.siteLibraryStatus, error.message, 'error');
       } finally {

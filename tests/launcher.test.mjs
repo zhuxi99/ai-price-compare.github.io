@@ -36,6 +36,12 @@ test('the local ratio-fetch launcher is valid and points to an executable local-
 
 test('the publish script can safely verify the latest backup without deploying', async () => {
   const dataPath = path.join(tmpdir(), `ai-price-launcher-data-${process.pid}.json`);
+  const githubPagePath = path.join(projectRoot, 'index.html');
+  const surgePagePath = path.join(projectRoot, '.surge', 'index.html');
+  const [originalGithubPage, originalSurgePage] = await Promise.all([
+    readFile(githubPagePath),
+    readFile(surgePagePath).catch(error => error?.code === 'ENOENT' ? null : Promise.reject(error))
+  ]);
   await writeFile(dataPath, JSON.stringify({
     version: 2,
     exportedAt: '2026-07-16T00:00:00.000Z',
@@ -52,8 +58,8 @@ test('the publish script can safely verify the latest backup without deploying',
     maxBuffer: 1_000_000
     });
     const [generatedPage, githubPage] = await Promise.all([
-      readFile(path.join(projectRoot, '.surge', 'index.html'), 'utf8'),
-      readFile(path.join(projectRoot, 'index.html'), 'utf8')
+      readFile(surgePagePath, 'utf8'),
+      readFile(githubPagePath, 'utf8')
     ]);
 
     assert.doesNotMatch(generatedPage, /PUBLISHED_DATA = null/);
@@ -62,7 +68,13 @@ test('the publish script can safely verify the latest backup without deploying',
     await assert.rejects(stat(path.join(projectRoot, '.surge', 'background.webp')), /ENOENT/);
     assert.match(result.stdout, /检查成功，未执行线上发布/);
   } finally {
-    await rm(dataPath, { force: true });
+    await Promise.all([
+      rm(dataPath, { force: true }),
+      writeFile(githubPagePath, originalGithubPage),
+      originalSurgePage === null
+        ? rm(surgePagePath, { force: true })
+        : writeFile(surgePagePath, originalSurgePage)
+    ]);
   }
 });
 

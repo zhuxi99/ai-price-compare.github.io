@@ -258,6 +258,9 @@ export function createRatioFetchServer({
             return {
               ok: false,
               site: { ...site, accessToken: undefined },
+              reason: error instanceof RatioFetchError && error.code
+                ? error.code
+                : 'fetch-failed',
               message: error instanceof RatioFetchError ? error.message : '抓取失败'
             };
           }

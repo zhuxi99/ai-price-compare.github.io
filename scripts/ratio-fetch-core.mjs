@@ -7,6 +7,7 @@ export class RatioFetchError extends Error {
     super(message, options);
     this.name = 'RatioFetchError';
     this.status = options.status;
+    this.code = options.code;
   }
 }
 
@@ -221,14 +222,31 @@ async function loadLiteLlmPriceTable(fetchImpl, timeoutMs) {
 
 async function fetchSub2ApiCatalog({ baseUrl, accessToken, timeoutMs, fetchImpl }) {
   const token = cleanString(accessToken).replace(/^Bearer\s+/i, '');
-  if (!token) throw new RatioFetchError('已识别为 Sub2API，请填写该站点的登录访问令牌（JWT）');
+  if (!token) {
+    throw new RatioFetchError('已识别为 Sub2API，请填写该站点的登录访问令牌（JWT）', {
+      code: 'missing-token'
+    });
+  }
   const dashboardHeaders = { Accept: 'application/json', Authorization: `Bearer ${token}` };
-  const [groupsPayload, ratesPayload, keysPayload, officialPrices] = await Promise.all([
-    fetchJson(fetchImpl, `${baseUrl}/api/v1/groups/available`, dashboardHeaders, timeoutMs),
-    fetchJson(fetchImpl, `${baseUrl}/api/v1/groups/rates`, dashboardHeaders, timeoutMs),
-    fetchJson(fetchImpl, `${baseUrl}/api/v1/keys?page=1&page_size=100`, dashboardHeaders, timeoutMs),
-    loadLiteLlmPriceTable(fetchImpl, timeoutMs)
-  ]);
+  let groupsPayload;
+  let ratesPayload;
+  let keysPayload;
+  let officialPrices;
+  try {
+    [groupsPayload, ratesPayload, keysPayload, officialPrices] = await Promise.all([
+      fetchJson(fetchImpl, `${baseUrl}/api/v1/groups/available`, dashboardHeaders, timeoutMs),
+      fetchJson(fetchImpl, `${baseUrl}/api/v1/groups/rates`, dashboardHeaders, timeoutMs),
+      fetchJson(fetchImpl, `${baseUrl}/api/v1/keys?page=1&page_size=100`, dashboardHeaders, timeoutMs),
+      loadLiteLlmPriceTable(fetchImpl, timeoutMs)
+    ]);
+  } catch (error) {
+    if (error?.status === 401) {
+      throw new RatioFetchError('Sub2API 登录令牌已失效或过期，请重新填写', {
+        code: 'invalid-token'
+      });
+    }
+    throw error;
+  }
   const groups = sub2Items(unwrapSub2Api(groupsPayload, '/api/v1/groups/available'));
   const rates = unwrapSub2Api(ratesPayload, '/api/v1/groups/rates');
   const keys = sub2Items(unwrapSub2Api(keysPayload, '/api/v1/keys'))
@@ -407,13 +425,25 @@ export async function fetchRatioCatalog({
   const baseUrl = normalizeSiteUrl(siteUrl);
   const headers = buildAccessHeaders({ accessToken, userId, tokenMode });
   const errors = [];
+  let newApiAuthFailed = false;
 
   if (siteType === 'auto' || siteType === 'new-api') {
     try {
       const payload = await fetchJson(fetchImpl, `${baseUrl}/api/pricing`, headers, timeoutMs);
       return { baseUrl, ...normalizeNewApiPricing(payload) };
     } catch (error) {
-      if (siteType === 'new-api') throw error;
+      newApiAuthFailed = error?.status === 401;
+      if (siteType === 'new-api') {
+        if (newApiAuthFailed) {
+          const hasToken = Boolean(cleanString(accessToken));
+          throw new RatioFetchError(hasToken
+            ? 'New API 登录令牌已失效或过期，请重新填写'
+            : '已识别为 New API，请填写该站点的登录访问令牌', {
+            code: hasToken ? 'invalid-token' : 'missing-token'
+          });
+        }
+        throw error;
+      }
       errors.push(`New API：${error.message}`);
     }
   }
@@ -425,7 +455,7 @@ export async function fetchRatioCatalog({
       try {
         return { baseUrl, ...await fetchSub2ApiCatalog({ baseUrl, accessToken, timeoutMs, fetchImpl }) };
       } catch (error) {
-        if (siteType === 'sub2api' || /登录访问令牌|API Key/.test(error.message)) throw error;
+        if (siteType === 'sub2api' || error?.code || /登录访问令牌|API Key/.test(error.message)) throw error;
         errors.push(`Sub2API：${error.message}`);
       }
     }
@@ -442,6 +472,15 @@ export async function fetchRatioCatalog({
       if (siteType === 'one-hub') throw error;
       errors.push(`One Hub：${error.message}`);
     }
+  }
+
+  if (newApiAuthFailed) {
+    const hasToken = Boolean(cleanString(accessToken));
+    throw new RatioFetchError(hasToken
+      ? 'New API 登录令牌已失效或过期，请重新填写'
+      : '已识别为 New API，请填写该站点的登录访问令牌', {
+      code: hasToken ? 'invalid-token' : 'missing-token'
+    });
   }
 
   throw new RatioFetchError(`未识别出兼容站点。${errors.join('；')}`);

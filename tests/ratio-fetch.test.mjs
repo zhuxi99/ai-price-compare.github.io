@@ -155,6 +155,27 @@ test('auto detection identifies a Sub2API site and asks for its dashboard JWT', 
   );
 });
 
+test('reports an expired Sub2API dashboard JWT as a token repair action', async () => {
+  const fetchImpl = async url => {
+    const pathname = new URL(url).pathname;
+    if (pathname === '/api/pricing') return jsonResponse({ message: 'not found' }, 404);
+    if (pathname === '/api/v1/auth/me') {
+      return jsonResponse({ code: 'UNAUTHORIZED', message: 'Authorization header is required' }, 401);
+    }
+    if (pathname.startsWith('/api/v1/groups/') || pathname === '/api/v1/keys') {
+      return jsonResponse({ code: 'UNAUTHORIZED', message: 'token expired' }, 401);
+    }
+    return jsonResponse({ message: 'not found' }, 404);
+  };
+
+  await assert.rejects(
+    fetchRatioCatalog({
+      siteUrl: 'https://sub2-expired.example', accessToken: 'expired-jwt', fetchImpl
+    }),
+    error => error.code === 'invalid-token' && /失效|过期/.test(error.message)
+  );
+});
+
 test('reports connection timeouts clearly instead of a generic fetch failure', async () => {
   const timeout = new TypeError('fetch failed', { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } });
   await assert.rejects(
@@ -407,4 +428,58 @@ test('batch fetching uses each saved site token without returning either secret'
   assert.equal(received.get('one.example'), 'Bearer secret-one');
   assert.equal(received.get('two.example'), 'Bearer secret-two');
   assert.doesNotMatch(responseText, /secret-one|secret-two/);
+});
+
+test('batch fetching separates sites waiting for a login token from real failures', async t => {
+  const configDirectory = await mkdtemp(path.join(tmpdir(), 'ai-price-missing-token-'));
+  t.after(() => rm(configDirectory, { recursive: true, force: true }));
+  const sitesStore = new SavedSitesStore({ configDirectory });
+  const app = createRatioFetchServer({
+    sitesStore,
+    fetchImpl: async url => {
+      const { hostname, pathname } = new URL(url);
+      if (hostname === 'sub2.example' && pathname === '/api/v1/auth/me') {
+        return jsonResponse({ code: 'UNAUTHORIZED', message: 'Authorization header is required' }, 401);
+      }
+      if (hostname === 'new-api.example' && pathname === '/api/pricing') {
+        return jsonResponse({ message: 'Unauthorized, not logged in and no access token provided' }, 401);
+      }
+      return jsonResponse({ message: 'not found' }, 404);
+    }
+  });
+  const origin = await app.listen();
+  t.after(() => app.close());
+
+  const saveSite = async site => {
+    const response = await fetch(`${origin}/api/save-site`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify(site)
+    });
+    return (await response.json()).site;
+  };
+  const sub2 = await saveSite({ name: 'Sub2站', siteUrl: 'https://sub2.example' });
+  const newApi = await saveSite({ name: 'New API站', siteUrl: 'https://new-api.example' });
+  const response = await fetch(`${origin}/api/fetch-sites`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ siteIds: [sub2.id, newApi.id] })
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.results.map(result => result.reason), ['missing-token', 'missing-token']);
+  assert.match(body.results[0].message, /Sub2API.*登录访问令牌/);
+  assert.match(body.results[1].message, /New API.*登录访问令牌/);
+});
+
+test('local fetch UI offers direct token repair instead of counting it as a generic failure', async () => {
+  const page = await readFile(path.join(PROJECT_ROOT, 'ratio-fetcher.html'), 'utf8');
+  assert.match(page, /id="fetchAttention"/);
+  assert.match(page, /待补令牌/);
+  assert.match(page, /result\.reason === 'missing-token'/);
+  assert.match(page, /result\.reason === 'invalid-token'/);
+  assert.match(page, /openSiteEditor\(result\.site, \{ focusToken: true \}\)/);
+  assert.match(page, /New API 可填写个人资料/);
+  assert.match(page, /不是 sk- API Key/);
 });
