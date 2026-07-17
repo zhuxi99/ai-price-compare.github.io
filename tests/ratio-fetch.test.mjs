@@ -176,6 +176,42 @@ test('reports an expired Sub2API dashboard JWT as a token repair action', async 
   );
 });
 
+test('a wrong saved token cannot hide an otherwise detectable Sub2API site', async () => {
+  const fetchImpl = async (url, options = {}) => {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'raw.githubusercontent.com') return jsonResponse({ sample_spec: {} });
+    if (parsed.pathname === '/api/pricing') return jsonResponse({ message: 'not found' }, 404);
+    if (parsed.pathname === '/api/v1/auth/me') {
+      if (options.headers?.Authorization) {
+        return new Response('<html>not found</html>', {
+          status: 404, headers: { 'Content-Type': 'text/html' }
+        });
+      }
+      return jsonResponse({ code: 'UNAUTHORIZED', message: 'Authorization header is required' }, 401);
+    }
+    if (parsed.pathname.startsWith('/api/v1/groups/') || parsed.pathname === '/api/v1/keys') {
+      return jsonResponse({ code: 'UNAUTHORIZED', message: 'invalid token' }, 401);
+    }
+    return jsonResponse({ message: 'not found' }, 404);
+  };
+
+  await assert.rejects(
+    fetchRatioCatalog({
+      siteUrl: 'https://sub2-hidden.example', accessToken: 'sk-wrong-kind-of-token', fetchImpl
+    }),
+    error => error.code === 'invalid-token' && /Sub2API/.test(error.message)
+  );
+});
+
+test('reports a site-wide HTTP 403 as server-side protection instead of an unknown backend', async () => {
+  const fetchImpl = async () => jsonResponse({ message: 'Forbidden' }, 403);
+
+  await assert.rejects(
+    fetchRatioCatalog({ siteUrl: 'https://cloudflare.example', fetchImpl }),
+    error => error.code === 'access-blocked' && /Cloudflare|WAF/.test(error.message)
+  );
+});
+
 test('reports connection timeouts clearly instead of a generic fetch failure', async () => {
   const timeout = new TypeError('fetch failed', { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } });
   await assert.rejects(

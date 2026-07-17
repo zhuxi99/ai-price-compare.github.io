@@ -151,12 +151,15 @@ function unwrapEnvelope(payload) {
   return payload;
 }
 
-async function probeSub2Api(fetchImpl, baseUrl, headers, timeoutMs) {
+async function probeSub2Api(fetchImpl, baseUrl, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetchImpl(`${baseUrl}/api/v1/auth/me`, {
-      method: 'GET', headers, redirect: 'follow', signal: controller.signal
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      redirect: 'follow',
+      signal: controller.signal
     });
     if (!/json/i.test(response.headers.get('content-type') || '')) return false;
     const payload = await response.json();
@@ -241,7 +244,7 @@ async function fetchSub2ApiCatalog({ baseUrl, accessToken, timeoutMs, fetchImpl 
     ]);
   } catch (error) {
     if (error?.status === 401) {
-      throw new RatioFetchError('Sub2API 登录令牌已失效或过期，请重新填写', {
+      throw new RatioFetchError('Sub2API 登录令牌无效或已过期，请填写网页登录 JWT（不是 sk- API Key）', {
         code: 'invalid-token'
       });
     }
@@ -426,6 +429,8 @@ export async function fetchRatioCatalog({
   const headers = buildAccessHeaders({ accessToken, userId, tokenMode });
   const errors = [];
   let newApiAuthFailed = false;
+  let newApiBlocked = false;
+  let oneHubBlocked = false;
 
   if (siteType === 'auto' || siteType === 'new-api') {
     try {
@@ -433,6 +438,7 @@ export async function fetchRatioCatalog({
       return { baseUrl, ...normalizeNewApiPricing(payload) };
     } catch (error) {
       newApiAuthFailed = error?.status === 401;
+      newApiBlocked = error?.status === 403;
       if (siteType === 'new-api') {
         if (newApiAuthFailed) {
           const hasToken = Boolean(cleanString(accessToken));
@@ -450,7 +456,7 @@ export async function fetchRatioCatalog({
 
   if (siteType === 'auto' || siteType === 'sub2api') {
     const detected = siteType === 'sub2api'
-      || await probeSub2Api(fetchImpl, baseUrl, headers, Math.min(timeoutMs, 8_000));
+      || await probeSub2Api(fetchImpl, baseUrl, Math.min(timeoutMs, 8_000));
     if (detected) {
       try {
         return { baseUrl, ...await fetchSub2ApiCatalog({ baseUrl, accessToken, timeoutMs, fetchImpl }) };
@@ -469,6 +475,7 @@ export async function fetchRatioCatalog({
       ]);
       return { baseUrl, ...normalizeOneHubPricing(available, groups) };
     } catch (error) {
+      oneHubBlocked = error?.status === 403;
       if (siteType === 'one-hub') throw error;
       errors.push(`One Hub：${error.message}`);
     }
@@ -480,6 +487,12 @@ export async function fetchRatioCatalog({
       ? 'New API 登录令牌已失效或过期，请重新填写'
       : '已识别为 New API，请填写该站点的登录访问令牌', {
       code: hasToken ? 'invalid-token' : 'missing-token'
+    });
+  }
+
+  if (newApiBlocked && oneHubBlocked) {
+    throw new RatioFetchError('目标站点拒绝服务器抓取（HTTP 403，通常是 Cloudflare/WAF 防护），暂时无法自动读取', {
+      code: 'access-blocked'
     });
   }
 
