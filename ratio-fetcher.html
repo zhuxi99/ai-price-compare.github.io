@@ -308,12 +308,13 @@
         <div class="library-toolbar">
           <button id="selectAllSites" class="button" type="button">全选</button>
           <button id="clearSiteSelection" class="button" type="button">取消全选</button>
+          <button id="importExistingSites" class="button" type="button">↻ 读取已有数据</button>
           <button id="addSiteButton" class="button" type="button">＋ 添加站点</button>
           <span id="siteCount" class="site-count"></span>
           <button id="fetchSelectedButton" class="button primary" type="button">抓取已选站点</button>
         </div>
         <div id="siteList" class="site-list"></div>
-        <div id="siteLibraryEmpty" class="library-empty" hidden>还没有保存站点。点击“添加站点”，填一次后以后就能直接选择。</div>
+        <div id="siteLibraryEmpty" class="library-empty" hidden>还没有保存站点。点击“读取已有数据”可自动提取站点名称和网址，只需再补需要的访问令牌。</div>
         <div id="siteLibraryStatus" class="status" role="status"></div>
 
         <form id="siteForm" class="site-editor" hidden>
@@ -460,7 +461,7 @@
     ];
 
     const elements = Object.fromEntries([
-      'snapshotPill', 'selectAllSites', 'clearSiteSelection', 'addSiteButton', 'siteCount',
+      'snapshotPill', 'selectAllSites', 'clearSiteSelection', 'importExistingSites', 'addSiteButton', 'siteCount',
       'fetchSelectedButton', 'siteList', 'siteLibraryEmpty', 'siteLibraryStatus', 'siteForm',
       'siteEditorTitle', 'editingSiteId', 'siteName', 'siteUrl', 'siteType', 'accessToken',
       'userId', 'tokenMode', 'revealToken', 'clearTokenField', 'clearAccessToken',
@@ -587,7 +588,7 @@
       updateSiteSelectionSummary();
     }
 
-    async function loadSites({ openEditorWhenEmpty = true } = {}) {
+    async function loadSites({ openEditorWhenEmpty = false } = {}) {
       try {
         const data = await api('/api/sites', { method: 'GET', headers: {} });
         state.sites = data.sites;
@@ -865,6 +866,33 @@
       state.selectedSites.clear();
       renderSites();
     });
+    async function importExistingSites({ automatic = false } = {}) {
+      setStatus(elements.siteLibraryStatus);
+      setLoading(elements.importExistingSites, true, '正在读取…');
+      try {
+        const data = await api('/api/import-sites', {
+          method: 'POST',
+          body: JSON.stringify({})
+        });
+        const sitesToSelect = automatic ? data.addedSites : data.sites;
+        for (const site of sitesToSelect) state.selectedSites.add(site.id);
+        await loadSites({ openEditorWhenEmpty: false });
+        if (data.imported > 0) {
+          setStatus(elements.siteLibraryStatus,
+            `已自动从 ${data.sourceName} 识别 ${data.recognized} 个站点，新导入 ${data.imported} 个到本地抓取工具。需要鉴权的站点再点铅笔补令牌即可。`,
+            'success');
+        } else if (!automatic) {
+          setStatus(elements.siteLibraryStatus,
+            `已有数据中的 ${data.recognized} 个站点都已保存在本地抓取工具，并已为你选中。`,
+            'success');
+        }
+      } catch (error) {
+        setStatus(elements.siteLibraryStatus, error.message, 'error');
+      } finally {
+        setLoading(elements.importExistingSites, false, '↻ 读取已有数据');
+      }
+    }
+    elements.importExistingSites.addEventListener('click', () => importExistingSites());
     elements.addSiteButton.addEventListener('click', () => openSiteEditor());
     elements.cancelSiteButton.addEventListener('click', closeSiteEditor);
 
@@ -947,7 +975,11 @@
       }
     });
 
-    Promise.all([refreshSnapshotState(), loadSites()]);
+    async function initialize() {
+      await Promise.all([refreshSnapshotState(), loadSites()]);
+      await importExistingSites({ automatic: true });
+    }
+    initialize();
   </script>
 </body>
 </html>

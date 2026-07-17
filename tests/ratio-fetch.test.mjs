@@ -12,7 +12,7 @@ import {
   mergeCatalogIntoSnapshot,
   normalizeSiteUrl
 } from '../scripts/ratio-fetch-core.mjs';
-import { createRatioFetchServer } from '../scripts/ratio-fetch-server.mjs';
+import { createRatioFetchServer, extractPublishedSiteCandidates } from '../scripts/ratio-fetch-server.mjs';
 import { SavedSitesStore } from '../scripts/saved-sites-store.mjs';
 
 function jsonResponse(body, status = 200) {
@@ -198,6 +198,63 @@ test('saved site tokens are encrypted at rest and blank edits preserve them', as
     userId: '8', siteType: 'new-api', tokenMode: 'bearer'
   });
   assert.equal((await store.getSiteWithToken(saved.id)).accessToken, '');
+});
+
+test('extracts and deduplicates saved sites from existing price data', () => {
+  const candidates = extractPublishedSiteCandidates({ entries: [
+    { provider: 'Niko', relayAddress: 'https://niko.example/register', updatedAt: 1 },
+    { provider: 'NikoAPI', relayAddress: 'https://niko.example/dashboard', updatedAt: 2 },
+    { provider: 'NikoAPI', relayAddress: 'https://niko.example/sign-up', updatedAt: 3 },
+    { provider: '另一个站', relayAddress: 'relay.example/path', updatedAt: 4 },
+    { provider: '', relayAddress: 'https://ignored.example' },
+    { provider: '坏地址', relayAddress: 'not a valid host %' }
+  ] });
+  assert.deepEqual(candidates, [
+    { name: '另一个站', siteUrl: 'https://relay.example', entryCount: 1 },
+    { name: 'NikoAPI', siteUrl: 'https://niko.example', entryCount: 3 }
+  ]);
+});
+
+test('imports sites from existing data once and selects saved matches on later imports', async t => {
+  const configDirectory = await mkdtemp(path.join(tmpdir(), 'ai-price-import-sites-'));
+  t.after(() => rm(configDirectory, { recursive: true, force: true }));
+  const sitesStore = new SavedSitesStore({ configDirectory });
+  const app = createRatioFetchServer({
+    sitesStore,
+    snapshotResolver: async () => ({
+      filePath: '/tmp/existing-price-data.json',
+      snapshot: { entries: [
+        { provider: '甲站', relayAddress: 'https://one.example/register' },
+        { provider: '甲站旧名', relayAddress: 'https://one.example/dashboard' },
+        { provider: '乙站', relayAddress: 'https://two.example' }
+      ] }
+    })
+  });
+  const origin = await app.listen();
+  t.after(() => app.close());
+
+  const importSites = async () => {
+    const response = await fetch(`${origin}/api/import-sites`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: '{}'
+    });
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+
+  const first = await importSites();
+  assert.equal(first.recognized, 2);
+  assert.equal(first.imported, 2);
+  assert.equal(first.sites.length, 2);
+  assert.equal(first.addedSites.length, 2);
+  assert.equal((await sitesStore.listSites()).length, 2);
+
+  const second = await importSites();
+  assert.equal(second.imported, 0);
+  assert.equal(second.skipped, 2);
+  assert.equal(second.sites.length, 2);
+  assert.equal(second.addedSites.length, 0);
 });
 
 test('batch fetching uses each saved site token without returning either secret', async t => {

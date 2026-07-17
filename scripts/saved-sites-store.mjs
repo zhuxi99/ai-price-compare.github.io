@@ -156,6 +156,60 @@ export class SavedSitesStore {
     return publicSite(site);
   }
 
+  async importSites(inputs) {
+    const store = await this.readStore();
+    const sitesByUrl = new Map(store.sites.map(site => [site.siteUrl, site]));
+    const matched = [];
+    const added = [];
+    let skipped = 0;
+
+    for (const input of Array.isArray(inputs) ? inputs : []) {
+      const name = cleanString(input?.name);
+      let siteUrl;
+      try {
+        siteUrl = normalizeSiteUrl(input?.siteUrl);
+      } catch {
+        skipped += 1;
+        continue;
+      }
+      if (!name) {
+        skipped += 1;
+        continue;
+      }
+
+      const existing = sitesByUrl.get(siteUrl);
+      if (existing) {
+        matched.push(existing);
+        skipped += 1;
+        continue;
+      }
+
+      const now = Date.now();
+      const site = {
+        id: randomUUID(),
+        name,
+        siteUrl,
+        userId: '',
+        siteType: 'auto',
+        tokenMode: 'bearer',
+        accessTokenEncrypted: null,
+        createdAt: now,
+        updatedAt: now
+      };
+      store.sites.push(site);
+      sitesByUrl.set(siteUrl, site);
+      matched.push(site);
+      added.push(site);
+    }
+
+    if (added.length > 0) await this.writeStore(store);
+    return {
+      sites: matched.map(publicSite),
+      added: added.map(publicSite),
+      skipped
+    };
+  }
+
   async deleteSite(id) {
     const store = await this.readStore();
     const nextSites = store.sites.filter(site => site.id !== id);

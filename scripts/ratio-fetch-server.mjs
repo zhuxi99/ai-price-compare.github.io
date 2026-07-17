@@ -6,7 +6,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { findLatestSnapshot } from './deploy-data.mjs';
-import { fetchRatioCatalog, mergeCatalogIntoSnapshot, RatioFetchError } from './ratio-fetch-core.mjs';
+import {
+  fetchRatioCatalog,
+  mergeCatalogIntoSnapshot,
+  normalizeSiteUrl,
+  RatioFetchError
+} from './ratio-fetch-core.mjs';
 import { SavedSitesStore } from './saved-sites-store.mjs';
 
 const HOST = '127.0.0.1';
@@ -75,6 +80,39 @@ async function resolveLatestSnapshot() {
   };
 }
 
+export function extractPublishedSiteCandidates(snapshot) {
+  const grouped = new Map();
+  for (const entry of Array.isArray(snapshot?.entries) ? snapshot.entries : []) {
+    const provider = typeof entry?.provider === 'string' ? entry.provider.trim() : '';
+    if (!provider || !entry?.relayAddress) continue;
+    let siteUrl;
+    try {
+      siteUrl = new URL(normalizeSiteUrl(entry.relayAddress));
+    } catch {
+      continue;
+    }
+    let group = grouped.get(siteUrl.origin);
+    if (!group) {
+      group = { siteUrl: siteUrl.origin, names: new Map(), totalEntries: 0 };
+      grouped.set(siteUrl.origin, group);
+    }
+    const name = group.names.get(provider) || { count: 0, latest: 0 };
+    name.count += 1;
+    name.latest = Math.max(name.latest, Number(entry.updatedAt) || Number(entry.createdAt) || 0);
+    group.names.set(provider, name);
+    group.totalEntries += 1;
+  }
+
+  return [...grouped.values()].map(group => {
+    const [name] = [...group.names.entries()].sort((left, right) =>
+      right[1].count - left[1].count
+      || right[1].latest - left[1].latest
+      || left[0].localeCompare(right[0], 'zh-CN', { numeric: true })
+    )[0];
+    return { name, siteUrl: group.siteUrl, entryCount: group.totalEntries };
+  }).sort((left, right) => left.name.localeCompare(right.name, 'zh-CN', { numeric: true }));
+}
+
 function safeFileTimestamp(date = new Date()) {
   const parts = [
     date.getFullYear(),
@@ -114,7 +152,8 @@ async function mapWithConcurrency(items, concurrency, callback) {
 
 export function createRatioFetchServer({
   fetchImpl = globalThis.fetch,
-  sitesStore = new SavedSitesStore()
+  sitesStore = new SavedSitesStore(),
+  snapshotResolver = resolveLatestSnapshot
 } = {}) {
   let serverOrigin = '';
   const server = createServer(async (request, response) => {
@@ -124,7 +163,7 @@ export function createRatioFetchServer({
         return pageResponse(response, await readFile(PAGE_PATH, 'utf8'));
       }
       if (request.method === 'GET' && url.pathname === '/api/state') {
-        const latest = await resolveLatestSnapshot();
+        const latest = await snapshotResolver();
         return jsonResponse(response, 200, {
           ok: true,
           entryCount: latest.snapshot.entries.length,
@@ -166,6 +205,22 @@ export function createRatioFetchServer({
         return jsonResponse(response, 200, { ok: true });
       }
 
+      if (request.method === 'POST' && url.pathname === '/api/import-sites') {
+        await readJsonBody(request);
+        const latest = await snapshotResolver();
+        const candidates = extractPublishedSiteCandidates(latest.snapshot);
+        const imported = await sitesStore.importSites(candidates);
+        return jsonResponse(response, 200, {
+          ok: true,
+          sourceName: path.basename(latest.filePath),
+          recognized: candidates.length,
+          imported: imported.added.length,
+          skipped: imported.skipped,
+          sites: imported.sites,
+          addedSites: imported.added
+        });
+      }
+
       if (request.method === 'POST' && url.pathname === '/api/fetch-sites') {
         const body = await readJsonBody(request);
         const siteIds = [...new Set(Array.isArray(body.siteIds) ? body.siteIds : [])]
@@ -201,7 +256,7 @@ export function createRatioFetchServer({
 
       if (request.method === 'POST' && url.pathname === '/api/save-snapshot') {
         const body = await readJsonBody(request);
-        const latest = await resolveLatestSnapshot();
+        const latest = await snapshotResolver();
         const result = mergeCatalogIntoSnapshot({
           snapshot: latest.snapshot,
           catalog: body.catalog,
@@ -231,7 +286,7 @@ export function createRatioFetchServer({
         const items = Array.isArray(body.items) ? body.items : [];
         if (items.length === 0) throw new RatioFetchError('没有可保存的抓取结果');
         if (items.length > 50) throw new RatioFetchError('单次最多合并 50 个站点');
-        const latest = await resolveLatestSnapshot();
+        const latest = await snapshotResolver();
         let snapshot = latest.snapshot;
         const totals = { added: 0, updated: 0, skipped: 0, selected: 0 };
         for (const item of items) {
