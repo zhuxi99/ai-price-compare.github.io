@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
 import {
@@ -10,6 +13,7 @@ import {
   normalizeSiteUrl
 } from '../scripts/ratio-fetch-core.mjs';
 import { createRatioFetchServer } from '../scripts/ratio-fetch-server.mjs';
+import { SavedSitesStore } from '../scripts/saved-sites-store.mjs';
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -161,4 +165,84 @@ test('local ratio server keeps the token out of its response and rejects foreign
     body: requestBody
   });
   assert.equal(rejected.status, 403);
+});
+
+test('saved site tokens are encrypted at rest and blank edits preserve them', async t => {
+  const configDirectory = await mkdtemp(path.join(tmpdir(), 'ai-price-saved-sites-'));
+  t.after(() => rm(configDirectory, { recursive: true, force: true }));
+  const store = new SavedSitesStore({ configDirectory });
+  const saved = await store.saveSite({
+    name: '测试站', siteUrl: 'https://saved.example/register', accessToken: 'persisted-secret',
+    userId: '8', siteType: 'new-api', tokenMode: 'bearer'
+  });
+
+  const [storeText, storeMode, keyMode] = await Promise.all([
+    readFile(store.storePath, 'utf8'),
+    stat(store.storePath),
+    stat(store.keyPath)
+  ]);
+  assert.doesNotMatch(storeText, /persisted-secret/);
+  assert.equal(storeMode.mode & 0o777, 0o600);
+  assert.equal(keyMode.mode & 0o777, 0o600);
+  assert.equal((await store.listSites())[0].hasAccessToken, true);
+  assert.equal((await store.getSiteWithToken(saved.id)).accessToken, 'persisted-secret');
+
+  await store.saveSite({
+    id: saved.id, name: '测试站新名称', siteUrl: 'https://saved.example', accessToken: '',
+    userId: '8', siteType: 'new-api', tokenMode: 'bearer'
+  });
+  assert.equal((await store.getSiteWithToken(saved.id)).accessToken, 'persisted-secret');
+
+  await store.saveSite({
+    id: saved.id, name: '测试站新名称', siteUrl: 'https://saved.example', clearAccessToken: true,
+    userId: '8', siteType: 'new-api', tokenMode: 'bearer'
+  });
+  assert.equal((await store.getSiteWithToken(saved.id)).accessToken, '');
+});
+
+test('batch fetching uses each saved site token without returning either secret', async t => {
+  const configDirectory = await mkdtemp(path.join(tmpdir(), 'ai-price-batch-sites-'));
+  t.after(() => rm(configDirectory, { recursive: true, force: true }));
+  const sitesStore = new SavedSitesStore({ configDirectory });
+  const received = new Map();
+  const app = createRatioFetchServer({
+    sitesStore,
+    fetchImpl: async (url, options) => {
+      const parsed = new URL(url);
+      received.set(parsed.hostname, options.headers.Authorization);
+      return jsonResponse({
+        success: true,
+        data: [{ model_name: `gpt-${parsed.hostname}`, quota_type: 0, model_ratio: 1, completion_ratio: 2, enable_groups: [] }],
+        group_ratio: { default: 1 },
+        usable_group: { default: '默认' }
+      });
+    }
+  });
+  const origin = await app.listen();
+  t.after(() => app.close());
+
+  const saveSite = async site => {
+    const response = await fetch(`${origin}/api/save-site`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify(site)
+    });
+    assert.equal(response.status, 200);
+    return (await response.json()).site;
+  };
+  const first = await saveSite({ name: '甲站', siteUrl: 'https://one.example', accessToken: 'secret-one' });
+  const second = await saveSite({ name: '乙站', siteUrl: 'https://two.example', accessToken: 'secret-two' });
+
+  const response = await fetch(`${origin}/api/fetch-sites`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ siteIds: [first.id, second.id] })
+  });
+  const responseText = await response.text();
+  const body = JSON.parse(responseText);
+  assert.equal(response.status, 200);
+  assert.equal(body.results.filter(result => result.ok).length, 2);
+  assert.equal(received.get('one.example'), 'Bearer secret-one');
+  assert.equal(received.get('two.example'), 'Bearer secret-two');
+  assert.doesNotMatch(responseText, /secret-one|secret-two/);
 });

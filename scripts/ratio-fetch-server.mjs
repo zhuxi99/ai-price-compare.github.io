@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { findLatestSnapshot } from './deploy-data.mjs';
 import { fetchRatioCatalog, mergeCatalogIntoSnapshot, RatioFetchError } from './ratio-fetch-core.mjs';
+import { SavedSitesStore } from './saved-sites-store.mjs';
 
 const HOST = '127.0.0.1';
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
@@ -97,7 +98,24 @@ function publicCatalog(catalog) {
   };
 }
 
-export function createRatioFetchServer({ fetchImpl = globalThis.fetch } = {}) {
+async function mapWithConcurrency(items, concurrency, callback) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await callback(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+  return results;
+}
+
+export function createRatioFetchServer({
+  fetchImpl = globalThis.fetch,
+  sitesStore = new SavedSitesStore()
+} = {}) {
   let serverOrigin = '';
   const server = createServer(async (request, response) => {
     try {
@@ -113,6 +131,9 @@ export function createRatioFetchServer({ fetchImpl = globalThis.fetch } = {}) {
           exportedAt: latest.snapshot.exportedAt,
           sourceName: path.basename(latest.filePath)
         });
+      }
+      if (request.method === 'GET' && url.pathname === '/api/sites') {
+        return jsonResponse(response, 200, { ok: true, sites: await sitesStore.listSites() });
       }
 
       if (request.method === 'POST') {
@@ -131,6 +152,51 @@ export function createRatioFetchServer({ fetchImpl = globalThis.fetch } = {}) {
           fetchImpl
         });
         return jsonResponse(response, 200, { ok: true, catalog: publicCatalog(catalog) });
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/save-site') {
+        const body = await readJsonBody(request);
+        const site = await sitesStore.saveSite(body);
+        return jsonResponse(response, 200, { ok: true, site });
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/delete-site') {
+        const body = await readJsonBody(request);
+        await sitesStore.deleteSite(body.id);
+        return jsonResponse(response, 200, { ok: true });
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/fetch-sites') {
+        const body = await readJsonBody(request);
+        const siteIds = [...new Set(Array.isArray(body.siteIds) ? body.siteIds : [])]
+          .filter(id => typeof id === 'string' && id);
+        if (siteIds.length === 0) throw new RatioFetchError('请至少选择一个站点');
+        if (siteIds.length > 50) throw new RatioFetchError('单次最多抓取 50 个站点');
+        const sites = await Promise.all(siteIds.map(id => sitesStore.getSiteWithToken(id)));
+        const results = await mapWithConcurrency(sites, 3, async site => {
+          try {
+            const catalog = await fetchRatioCatalog({
+              siteUrl: site.siteUrl,
+              accessToken: site.accessToken,
+              userId: site.userId,
+              tokenMode: site.tokenMode,
+              siteType: site.siteType,
+              fetchImpl
+            });
+            return {
+              ok: true,
+              site: { ...site, accessToken: undefined },
+              catalog: publicCatalog(catalog)
+            };
+          } catch (error) {
+            return {
+              ok: false,
+              site: { ...site, accessToken: undefined },
+              message: error instanceof RatioFetchError ? error.message : '抓取失败'
+            };
+          }
+        });
+        return jsonResponse(response, 200, { ok: true, results });
       }
 
       if (request.method === 'POST' && url.pathname === '/api/save-snapshot') {
@@ -157,6 +223,39 @@ export function createRatioFetchServer({ fetchImpl = globalThis.fetch } = {}) {
           updated: result.updated,
           skipped: result.skipped,
           selected: result.selected
+        });
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/save-batch-snapshot') {
+        const body = await readJsonBody(request);
+        const items = Array.isArray(body.items) ? body.items : [];
+        if (items.length === 0) throw new RatioFetchError('没有可保存的抓取结果');
+        if (items.length > 50) throw new RatioFetchError('单次最多合并 50 个站点');
+        const latest = await resolveLatestSnapshot();
+        let snapshot = latest.snapshot;
+        const totals = { added: 0, updated: 0, skipped: 0, selected: 0 };
+        for (const item of items) {
+          const result = mergeCatalogIntoSnapshot({
+            snapshot,
+            catalog: item.catalog,
+            selectedModels: item.selectedModels,
+            group: item.group,
+            exchangeRate: item.exchangeRate,
+            provider: item.provider,
+            categoryMode: item.categoryMode,
+            fixedCategory: item.fixedCategory
+          });
+          snapshot = result.snapshot;
+          for (const key of Object.keys(totals)) totals[key] += result[key];
+        }
+        const outputPath = path.join(latest.directory, `ai-price-data-${safeFileTimestamp()}.json`);
+        await mkdir(latest.directory, { recursive: true });
+        await writeFile(outputPath, `${JSON.stringify(snapshot, null, 2)}\n`, { mode: 0o600 });
+        return jsonResponse(response, 200, {
+          ok: true,
+          outputName: path.basename(outputPath),
+          entryCount: snapshot.entries.length,
+          ...totals
         });
       }
 
@@ -193,7 +292,7 @@ async function main() {
   console.log('AI 价格比对 - 本地倍率抓取工具');
   console.log('================================');
   console.log(`本地地址：${origin}`);
-  console.log('令牌仅在本次抓取请求中使用，不会写入文件。');
+  console.log('保存的令牌使用本机 AES-256-GCM 密钥加密，不会进入价格 JSON。');
   console.log('完成后可在此窗口按 Ctrl+C 关闭工具。');
 
   if (process.argv.includes('--open')) {

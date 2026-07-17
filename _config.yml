@@ -1,3 +1,10 @@
 theme: jekyll-theme-minimal
 title: AI 价格比对
 description: AI 模型与中转站价格比对工具
+exclude:
+  - ratio-fetcher.html
+  - scripts
+  - tests
+  - package.json
+  - AI价格比对-倍率抓取.desktop
+  - AI价格比对-一键发布.desktop

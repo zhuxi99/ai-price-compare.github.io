@@ -186,6 +186,80 @@
     input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
     .save-summary { margin-right: auto; color: var(--muted); }
 
+    .library-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-bottom: 16px; }
+    .library-toolbar .button.primary { margin-left: auto; }
+    .site-count { color: var(--muted); font-size: 13px; }
+    .site-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 11px; }
+    .site-option {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      overflow: hidden;
+      background: #fff;
+      border: 1px solid #dfe7dd;
+      border-radius: 999px;
+      transition: border-color .16s, background .16s, box-shadow .16s, transform .08s;
+    }
+    .site-option:hover { border-color: #c5d6c2; box-shadow: 0 5px 16px rgba(50, 77, 55, .07); }
+    .site-option.selected { background: #eef6eb; border-color: #9fbd99; box-shadow: inset 0 0 0 1px #c8ddc3; }
+    .site-select-button {
+      min-width: 0;
+      min-height: 62px;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      padding: 8px 6px 8px 14px;
+      color: inherit;
+      background: transparent;
+      border: 0;
+      text-align: left;
+    }
+    .selection-dot {
+      width: 21px;
+      height: 21px;
+      display: grid;
+      place-items: center;
+      color: transparent;
+      background: #fff;
+      border: 2px solid #cdd9cb;
+      border-radius: 50%;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .site-option.selected .selection-dot { color: #fff; background: var(--green); border-color: var(--green); }
+    .site-copy { min-width: 0; }
+    .site-name { display: block; overflow: hidden; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+    .site-domain { display: block; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+    .token-state { color: #6c713f; font-size: 11px; }
+    .site-option-actions { display: flex; gap: 2px; padding-right: 10px; }
+    .icon-button { width: 32px; height: 32px; padding: 0; color: #69736b; background: transparent; border: 0; border-radius: 50%; }
+    .icon-button:hover { color: #425e48; background: rgba(255, 255, 255, .82); }
+    .icon-button.danger:hover { color: var(--danger); background: var(--danger-soft); }
+    .library-empty { padding: 28px 18px; color: var(--muted); background: #fafcfa; border: 1px dashed #ccd8ca; border-radius: 12px; text-align: center; }
+    .site-editor { margin-top: 18px; padding: 18px; background: #fbfcfa; border: 1px solid #e1e8df; border-radius: 12px; }
+    .site-editor-title { margin: 0 0 15px; font-size: 16px; }
+    .clear-token-row { min-height: 42px; display: flex; align-items: center; }
+    .clear-token-row label { display: inline-flex; align-items: center; gap: 7px; margin: 0; font-weight: 600; }
+    .fetched-sites { display: flex; flex-wrap: wrap; gap: 10px; margin: 17px 0 4px; }
+    .fetched-site {
+      min-width: 250px;
+      flex: 1 1 280px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(130px, 180px);
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: #fafcfa;
+      border: 1px solid #dfe7dd;
+      border-radius: 12px;
+    }
+    .fetched-site-name { overflow: hidden; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+    .fetched-site-meta { color: var(--muted); font-size: 12px; }
+    .compact-control { height: 36px; padding: 6px 9px; font-size: 12px; }
+    .site-cell { max-width: 180px; overflow: hidden; color: #4d6652; font-weight: 750; text-overflow: ellipsis; }
+
     @media (max-width: 900px) {
       .field, .field.wide { grid-column: span 6; }
       .model-name { max-width: 230px; }
@@ -200,6 +274,10 @@
       .actions { align-items: stretch; flex-direction: column; }
       .actions .button { width: 100%; }
       .save-summary { margin-right: 0; text-align: center; }
+      .library-toolbar .button.primary { margin-left: 0; }
+      .library-toolbar .button { flex: 1 1 calc(50% - 5px); }
+      .site-list { grid-template-columns: 1fr; }
+      .fetched-site { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -217,18 +295,35 @@
 
   <main>
     <section class="hero">
-      <h2>输入站点，一次抓取模型与分组倍率</h2>
-      <p>兼容 New API、One API、Veloera，以及 One Hub / Done Hub 常见接口。抓取完成后会自动识别模型家族、计算人民币价格，并合并到最新价格 JSON。</p>
+      <h2>选中常用站点，一次批量抓取倍率</h2>
+      <p>站点资料只需填写一次。以后直接点击圆角站点框，可多选、全选并批量抓取；结果会自动识别模型家族、计算人民币价格，并合并到最新价格 JSON。</p>
     </section>
 
     <section class="card">
       <div class="card-header">
         <span class="step">1</span>
-        <h3 class="card-title">连接目标站点</h3>
+        <h3 class="card-title">选择常用站点</h3>
       </div>
       <div class="card-body">
-        <form id="fetchForm">
+        <div class="library-toolbar">
+          <button id="selectAllSites" class="button" type="button">全选</button>
+          <button id="clearSiteSelection" class="button" type="button">取消全选</button>
+          <button id="addSiteButton" class="button" type="button">＋ 添加站点</button>
+          <span id="siteCount" class="site-count"></span>
+          <button id="fetchSelectedButton" class="button primary" type="button">抓取已选站点</button>
+        </div>
+        <div id="siteList" class="site-list"></div>
+        <div id="siteLibraryEmpty" class="library-empty" hidden>还没有保存站点。点击“添加站点”，填一次后以后就能直接选择。</div>
+        <div id="siteLibraryStatus" class="status" role="status"></div>
+
+        <form id="siteForm" class="site-editor" hidden>
+          <h4 id="siteEditorTitle" class="site-editor-title">添加常用站点</h4>
+          <input id="editingSiteId" type="hidden">
           <div class="form-grid">
+            <div class="field">
+              <label for="siteName">站点名称</label>
+              <input id="siteName" class="control" type="text" maxlength="160" autocomplete="off" placeholder="如 NikoAPI" required>
+            </div>
             <div class="field wide">
               <label for="siteUrl">网站地址</label>
               <input id="siteUrl" class="control" type="text" inputmode="url" autocomplete="off" placeholder="https://example.com" required>
@@ -248,7 +343,7 @@
                 <input id="accessToken" class="control" type="password" autocomplete="new-password" spellcheck="false" placeholder="可留空；需要鉴权的站点再填写">
                 <button id="revealToken" class="reveal-button" type="button">显示</button>
               </div>
-              <span class="hint">支持用户访问令牌。抓取请求结束后，输入框会立即清空。</span>
+              <span class="hint">编辑站点时留空会保留原令牌；新令牌会覆盖旧令牌。</span>
             </div>
             <div class="field">
               <label for="userId">用户 ID（可选）</label>
@@ -262,12 +357,16 @@
                 <option value="raw">原始令牌</option>
               </select>
             </div>
+            <div id="clearTokenField" class="field clear-token-row" hidden>
+              <label><input id="clearAccessToken" type="checkbox"> 删除已保存的令牌</label>
+            </div>
           </div>
-          <div class="security-note"><span>✓</span><span>令牌只从浏览器发送给本机 127.0.0.1，再由本机直连你填写的站点；不会写入 JSON、日志、GitHub 或线上网站。</span></div>
+          <div class="security-note"><span>✓</span><span>站点资料保存在本机；令牌使用本机 AES-256-GCM 密钥加密，配置文件权限仅限当前用户。它不会进入价格 JSON、日志、GitHub 或线上网站。</span></div>
           <div class="actions">
-            <button id="fetchButton" class="button primary" type="submit">识别站点并抓取倍率</button>
+            <button id="cancelSiteButton" class="button" type="button">取消</button>
+            <button id="saveSiteButton" class="button primary" type="submit">保存站点</button>
           </div>
-          <div id="fetchStatus" class="status" role="alert"></div>
+          <div id="siteFormStatus" class="status" role="alert"></div>
         </form>
       </div>
     </section>
@@ -275,38 +374,26 @@
     <section id="resultCard" class="card" hidden>
       <div class="card-header">
         <span class="step">2</span>
-        <h3 class="card-title">选择分组并检查模型</h3>
-        <span id="sourceBadge" class="source-badge"></span>
+        <h3 class="card-title">选择各站分组并检查模型</h3>
       </div>
       <div class="card-body">
         <div class="form-grid">
           <div class="field">
-            <label for="groupSelect">价格分组</label>
-            <select id="groupSelect" class="control"></select>
-          </div>
-          <div class="field">
             <label for="exchangeRate">美元兑人民币</label>
             <input id="exchangeRate" class="control" type="number" min="0.01" step="0.01" value="7.20" inputmode="decimal">
-          </div>
-          <div class="field">
-            <label for="providerName">中转站名称</label>
-            <input id="providerName" class="control" type="text" maxlength="160">
           </div>
           <div class="field wide">
             <label>分类方式</label>
             <div class="radio-row">
               <label><input type="radio" name="categoryMode" value="auto" checked> 自动识别模型家族</label>
-              <label><input type="radio" name="categoryMode" value="fixed"> 全部放入一个分类</label>
+              <label><input type="radio" name="categoryMode" value="fixed"> 按站点名称归类</label>
             </div>
           </div>
-          <div id="fixedCategoryField" class="field" hidden>
-            <label for="fixedCategory">分类名称</label>
-            <input id="fixedCategory" class="control" type="text" value="自动抓取">
-          </div>
         </div>
+        <div id="fetchedSites" class="fetched-sites"></div>
 
         <div class="result-toolbar">
-          <input id="modelSearch" class="control search" type="search" placeholder="筛选模型名称或自动分类">
+          <input id="modelSearch" class="control search" type="search" placeholder="筛选站点、模型名称或自动分类">
           <button id="selectVisible" class="button" type="button">全选当前结果</button>
           <button id="clearSelection" class="button" type="button">取消全选</button>
           <span id="resultMeta" class="result-meta"></span>
@@ -316,6 +403,7 @@
             <thead>
               <tr>
                 <th><input id="masterCheckbox" type="checkbox" aria-label="全选"></th>
+                <th>站点</th>
                 <th>模型</th>
                 <th>自动分类</th>
                 <th>模型倍率</th>
@@ -372,14 +460,23 @@
     ];
 
     const elements = Object.fromEntries([
-      'snapshotPill', 'fetchForm', 'siteUrl', 'siteType', 'accessToken', 'userId', 'tokenMode',
-      'revealToken', 'fetchButton', 'fetchStatus', 'resultCard', 'sourceBadge', 'groupSelect',
-      'exchangeRate', 'providerName', 'fixedCategoryField', 'fixedCategory', 'modelSearch',
-      'selectVisible', 'clearSelection', 'resultMeta', 'masterCheckbox', 'modelRows', 'emptyModels',
-      'saveCard', 'saveSummary', 'saveButton', 'saveStatus'
+      'snapshotPill', 'selectAllSites', 'clearSiteSelection', 'addSiteButton', 'siteCount',
+      'fetchSelectedButton', 'siteList', 'siteLibraryEmpty', 'siteLibraryStatus', 'siteForm',
+      'siteEditorTitle', 'editingSiteId', 'siteName', 'siteUrl', 'siteType', 'accessToken',
+      'userId', 'tokenMode', 'revealToken', 'clearTokenField', 'clearAccessToken',
+      'cancelSiteButton', 'saveSiteButton', 'siteFormStatus', 'resultCard', 'exchangeRate',
+      'fetchedSites', 'modelSearch', 'selectVisible', 'clearSelection', 'resultMeta',
+      'masterCheckbox', 'modelRows', 'emptyModels', 'saveCard', 'saveSummary',
+      'saveButton', 'saveStatus'
     ].map(id => [id, document.getElementById(id)]));
 
-    const state = { catalog: null, selected: new Set(), visibleSelectable: [] };
+    const state = {
+      sites: [],
+      selectedSites: new Set(),
+      results: [],
+      selectedModels: new Set(),
+      visibleSelectable: []
+    };
 
     function classifyModel(name) {
       return FAMILY_RULES.find(([, patterns]) => patterns.some(pattern => pattern.test(name)))?.[0] || '其他模型';
@@ -422,22 +519,153 @@
       }
     }
 
-    function currentGroup() {
-      return elements.groupSelect.value || 'default';
+    function siteHost(siteUrl) {
+      try { return new URL(siteUrl).hostname; }
+      catch { return siteUrl; }
     }
 
-    function currentGroupRatio() {
-      return Number(state.catalog?.groupRatio?.[currentGroup()] || 1);
+    function updateSiteSelectionSummary() {
+      elements.siteCount.textContent = `已保存 ${state.sites.length} 个 · 已选 ${state.selectedSites.size} 个`;
+      elements.fetchSelectedButton.disabled = state.selectedSites.size === 0;
+      elements.fetchSelectedButton.textContent = state.selectedSites.size
+        ? `抓取已选（${state.selectedSites.size}）`
+        : '抓取已选站点';
     }
 
-    function isAvailable(model) {
+    function renderSites() {
+      elements.siteList.replaceChildren();
+      for (const site of state.sites) {
+        const selected = state.selectedSites.has(site.id);
+        const option = document.createElement('article');
+        option.className = `site-option${selected ? ' selected' : ''}`;
+
+        const selectButton = document.createElement('button');
+        selectButton.type = 'button';
+        selectButton.className = 'site-select-button';
+        selectButton.setAttribute('aria-pressed', String(selected));
+        const dot = document.createElement('span');
+        dot.className = 'selection-dot';
+        dot.textContent = '✓';
+        const copy = document.createElement('span');
+        copy.className = 'site-copy';
+        const name = document.createElement('span');
+        name.className = 'site-name';
+        name.textContent = site.name;
+        const domain = document.createElement('span');
+        domain.className = 'site-domain';
+        domain.textContent = siteHost(site.siteUrl);
+        const tokenState = document.createElement('span');
+        tokenState.className = 'token-state';
+        tokenState.textContent = site.hasAccessToken ? '已保存令牌' : '无需令牌 / 未保存';
+        copy.append(name, domain, tokenState);
+        selectButton.append(dot, copy);
+        selectButton.addEventListener('click', () => {
+          if (state.selectedSites.has(site.id)) state.selectedSites.delete(site.id);
+          else state.selectedSites.add(site.id);
+          renderSites();
+        });
+
+        const actions = document.createElement('div');
+        actions.className = 'site-option-actions';
+        const editButton = document.createElement('button');
+        editButton.type = 'button';
+        editButton.className = 'icon-button';
+        editButton.textContent = '✎';
+        editButton.title = `编辑 ${site.name}`;
+        editButton.addEventListener('click', () => openSiteEditor(site));
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'icon-button danger';
+        deleteButton.textContent = '×';
+        deleteButton.title = `删除 ${site.name}`;
+        deleteButton.addEventListener('click', () => deleteSite(site));
+        actions.append(editButton, deleteButton);
+        option.append(selectButton, actions);
+        elements.siteList.appendChild(option);
+      }
+      elements.siteLibraryEmpty.hidden = state.sites.length > 0;
+      updateSiteSelectionSummary();
+    }
+
+    async function loadSites({ openEditorWhenEmpty = true } = {}) {
+      try {
+        const data = await api('/api/sites', { method: 'GET', headers: {} });
+        state.sites = data.sites;
+        const validIds = new Set(state.sites.map(site => site.id));
+        state.selectedSites = new Set([...state.selectedSites].filter(id => validIds.has(id)));
+        renderSites();
+        if (openEditorWhenEmpty && state.sites.length === 0) openSiteEditor();
+      } catch (error) {
+        setStatus(elements.siteLibraryStatus, error.message, 'error');
+      }
+    }
+
+    function resetTokenInput() {
+      elements.accessToken.value = '';
+      elements.accessToken.type = 'password';
+      elements.revealToken.textContent = '显示';
+    }
+
+    function openSiteEditor(site = null) {
+      elements.siteForm.reset();
+      setStatus(elements.siteFormStatus);
+      resetTokenInput();
+      elements.editingSiteId.value = site?.id || '';
+      elements.siteEditorTitle.textContent = site ? `编辑「${site.name}」` : '添加常用站点';
+      elements.siteName.value = site?.name || '';
+      elements.siteUrl.value = site?.siteUrl || '';
+      elements.siteType.value = site?.siteType || 'auto';
+      elements.userId.value = site?.userId || '';
+      elements.tokenMode.value = site?.tokenMode || 'bearer';
+      elements.clearAccessToken.checked = false;
+      elements.clearTokenField.hidden = !site?.hasAccessToken;
+      elements.accessToken.placeholder = site?.hasAccessToken
+        ? '留空保留原令牌；输入新值则替换'
+        : '可留空；需要鉴权的站点再填写';
+      elements.siteForm.hidden = false;
+      setTimeout(() => elements.siteName.focus(), 0);
+      elements.siteForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function closeSiteEditor() {
+      elements.siteForm.hidden = true;
+      elements.editingSiteId.value = '';
+      resetTokenInput();
+      setStatus(elements.siteFormStatus);
+    }
+
+    async function deleteSite(site) {
+      if (!confirm(`确定删除保存的站点「${site.name}」？\n该站点的加密令牌也会一并删除。`)) return;
+      try {
+        await api('/api/delete-site', { method: 'POST', body: JSON.stringify({ id: site.id }) });
+        state.selectedSites.delete(site.id);
+        await loadSites({ openEditorWhenEmpty: false });
+        setStatus(elements.siteLibraryStatus, `已删除「${site.name}」`, 'success');
+      } catch (error) {
+        setStatus(elements.siteLibraryStatus, error.message, 'error');
+      }
+    }
+
+    function resultGroup(result) {
+      return result.group || 'default';
+    }
+
+    function resultGroupRatio(result) {
+      return Number(result.catalog.groupRatio?.[resultGroup(result)] || 1);
+    }
+
+    function modelKey(result, model) {
+      return `${result.site.id}::${model.modelName}`;
+    }
+
+    function isAvailable(result, model) {
       return model.billingType === 'tokens'
-        && (model.enableGroups.length === 0 || model.enableGroups.includes(currentGroup()));
+        && (model.enableGroups.length === 0 || model.enableGroups.includes(resultGroup(result)));
     }
 
-    function calculatePrice(model) {
+    function calculatePrice(result, model) {
       const exchange = Number(elements.exchangeRate.value) || 0;
-      const groupRatio = currentGroupRatio();
+      const groupRatio = resultGroupRatio(result);
       const baseInput = model.directInputUsd ?? model.modelRatio * 2;
       const baseOutput = model.directOutputUsd ?? baseInput * model.completionRatio;
       return { input: baseInput * exchange * groupRatio, output: baseOutput * exchange * groupRatio };
@@ -459,46 +687,56 @@
 
     function filteredModels() {
       const query = elements.modelSearch.value.trim().toLowerCase();
-      return state.catalog.models
-        .filter(model => !query || model.modelName.toLowerCase().includes(query) || classifyModel(model.modelName).toLowerCase().includes(query))
+      return state.results.flatMap(result => result.catalog.models.map(model => ({
+        result,
+        model,
+        key: modelKey(result, model)
+      })))
+        .filter(({ result, model }) => !query
+          || result.site.name.toLowerCase().includes(query)
+          || model.modelName.toLowerCase().includes(query)
+          || classifyModel(model.modelName).toLowerCase().includes(query))
         .sort((left, right) => {
-          const family = categoryRank(classifyModel(left.modelName)) - categoryRank(classifyModel(right.modelName));
+          const family = categoryRank(classifyModel(left.model.modelName)) - categoryRank(classifyModel(right.model.modelName));
           if (family) return family;
-          const price = (calculatePrice(left)?.output || Infinity) - (calculatePrice(right)?.output || Infinity);
-          return price || left.modelName.localeCompare(right.modelName, 'zh-CN');
+          const price = (calculatePrice(left.result, left.model)?.output || Infinity)
+            - (calculatePrice(right.result, right.model)?.output || Infinity);
+          return price
+            || left.model.modelName.localeCompare(right.model.modelName, 'zh-CN')
+            || left.result.site.name.localeCompare(right.result.site.name, 'zh-CN');
         });
     }
 
     function updateSaveSummary() {
-      const selectedAvailable = [...state.selected].filter(name => {
-        const model = state.catalog?.models.find(item => item.modelName === name);
-        return model && isAvailable(model);
-      }).length;
-      elements.saveSummary.textContent = `将合并 ${selectedAvailable} 个模型；同站点同模型自动更新`;
+      const selectedAvailable = state.results.reduce((total, result) => total + result.catalog.models
+        .filter(model => isAvailable(result, model) && state.selectedModels.has(modelKey(result, model))).length, 0);
+      elements.saveSummary.textContent = `将合并 ${state.results.length} 个站点、${selectedAvailable} 个模型；同站点同模型自动更新`;
       elements.saveButton.disabled = selectedAvailable === 0;
     }
 
     function renderModels() {
       const models = filteredModels();
       elements.modelRows.replaceChildren();
-      state.visibleSelectable = models.filter(isAvailable).map(model => model.modelName);
+      state.visibleSelectable = models.filter(({ result, model }) => isAvailable(result, model)).map(item => item.key);
 
-      for (const model of models) {
-        const available = isAvailable(model);
+      for (const { result, model, key } of models) {
+        const available = isAvailable(result, model);
         const row = document.createElement('tr');
         if (!available) row.className = 'unavailable';
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
-        checkbox.checked = state.selected.has(model.modelName);
+        checkbox.checked = state.selectedModels.has(key);
         checkbox.disabled = !available;
         checkbox.setAttribute('aria-label', `选择 ${model.modelName}`);
         checkbox.addEventListener('change', () => {
-          if (checkbox.checked) state.selected.add(model.modelName);
-          else state.selected.delete(model.modelName);
+          if (checkbox.checked) state.selectedModels.add(key);
+          else state.selectedModels.delete(key);
           updateMasterCheckbox();
           updateSaveSummary();
         });
         appendCell(row, checkbox);
+        const siteCell = appendCell(row, result.site.name, 'site-cell');
+        siteCell.title = result.site.name;
         const nameCell = appendCell(row, model.modelName, 'model-name');
         nameCell.title = model.modelName;
         const category = document.createElement('span');
@@ -507,74 +745,109 @@
         appendCell(row, category);
         appendCell(row, `×${formatNumber(model.modelRatio)}`);
         appendCell(row, `×${formatNumber(model.completionRatio)}`);
-        appendCell(row, `×${formatNumber(currentGroupRatio())}`);
-        const prices = available ? calculatePrice(model) : null;
+        appendCell(row, `×${formatNumber(resultGroupRatio(result))}`);
+        const prices = available ? calculatePrice(result, model) : null;
         appendCell(row, prices ? `¥${formatNumber(prices.input, 2)}` : model.billingType === 'times' ? '按次计费' : '分组不可用', prices ? 'price' : '');
         appendCell(row, prices ? `¥${formatNumber(prices.output, 2)}` : '—', prices ? 'price' : '');
         elements.modelRows.appendChild(row);
       }
 
       elements.emptyModels.hidden = models.length > 0;
-      elements.resultMeta.textContent = `共 ${state.catalog.models.length} 个 · 当前显示 ${models.length} 个 · 已选 ${state.selected.size} 个`;
+      const totalModels = state.results.reduce((total, result) => total + result.catalog.models.length, 0);
+      elements.resultMeta.textContent = `共 ${state.results.length} 站 / ${totalModels} 个 · 当前显示 ${models.length} 个 · 已选 ${state.selectedModels.size} 个`;
       updateMasterCheckbox();
       updateSaveSummary();
     }
 
     function updateMasterCheckbox() {
-      const selectedVisible = state.visibleSelectable.filter(name => state.selected.has(name)).length;
+      const selectedVisible = state.visibleSelectable.filter(key => state.selectedModels.has(key)).length;
       elements.masterCheckbox.checked = state.visibleSelectable.length > 0 && selectedVisible === state.visibleSelectable.length;
       elements.masterCheckbox.indeterminate = selectedVisible > 0 && selectedVisible < state.visibleSelectable.length;
     }
 
     function selectAvailableModels() {
-      state.selected = new Set(state.catalog.models.filter(isAvailable).map(model => model.modelName));
+      state.selectedModels = new Set(state.results.flatMap(result => result.catalog.models
+        .filter(model => isAvailable(result, model)).map(model => modelKey(result, model))));
       renderModels();
     }
 
-    function showCatalog(catalog) {
-      state.catalog = catalog;
-      elements.sourceBadge.textContent = catalog.sourceType === 'one-hub' ? 'One Hub 系' : 'New API 系';
-      elements.groupSelect.replaceChildren();
-      Object.entries(catalog.groupRatio)
-        .sort((left, right) => left[0] === 'default' ? -1 : right[0] === 'default' ? 1 : left[0].localeCompare(right[0], 'zh-CN'))
-        .forEach(([key, ratio]) => {
-          const option = document.createElement('option');
-          option.value = key;
-          option.textContent = `${catalog.usableGroup[key] || key}（×${formatNumber(Number(ratio))}）`;
-          elements.groupSelect.appendChild(option);
+    function renderFetchedSites() {
+      elements.fetchedSites.replaceChildren();
+      for (const result of state.results) {
+        const card = document.createElement('div');
+        card.className = 'fetched-site';
+        const copy = document.createElement('div');
+        const name = document.createElement('div');
+        name.className = 'fetched-site-name';
+        name.textContent = result.site.name;
+        const meta = document.createElement('div');
+        meta.className = 'fetched-site-meta';
+        meta.textContent = `${result.catalog.sourceType === 'one-hub' ? 'One Hub 系' : 'New API 系'} · ${result.catalog.models.length} 个模型`;
+        copy.append(name, meta);
+        const select = document.createElement('select');
+        select.className = 'control compact-control';
+        select.setAttribute('aria-label', `${result.site.name}价格分组`);
+        Object.entries(result.catalog.groupRatio)
+          .sort((left, right) => left[0] === 'default' ? -1 : right[0] === 'default' ? 1 : left[0].localeCompare(right[0], 'zh-CN'))
+          .forEach(([key, ratio]) => {
+            const option = document.createElement('option');
+            option.value = key;
+            option.textContent = `${result.catalog.usableGroup[key] || key}（×${formatNumber(Number(ratio))}）`;
+            select.appendChild(option);
+          });
+        select.value = result.group;
+        select.addEventListener('change', () => {
+          result.group = select.value;
+          for (const model of result.catalog.models) state.selectedModels.delete(modelKey(result, model));
+          for (const model of result.catalog.models.filter(model => isAvailable(result, model))) {
+            state.selectedModels.add(modelKey(result, model));
+          }
+          renderModels();
         });
-      const hostname = new URL(catalog.baseUrl).hostname;
-      elements.providerName.value = hostname;
-      elements.fixedCategory.value = `${hostname} 自动抓取`;
+        card.append(copy, select);
+        elements.fetchedSites.appendChild(card);
+      }
+    }
+
+    function showBatchResults(results) {
+      state.results = results.filter(result => result.ok).map(result => ({
+        ...result,
+        group: Object.hasOwn(result.catalog.groupRatio, 'default')
+          ? 'default'
+          : Object.keys(result.catalog.groupRatio)[0]
+      }));
+      renderFetchedSites();
       elements.resultCard.hidden = false;
       elements.saveCard.hidden = false;
       selectAvailableModels();
       elements.resultCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    elements.fetchForm.addEventListener('submit', async event => {
+    elements.siteForm.addEventListener('submit', async event => {
       event.preventDefault();
-      setStatus(elements.fetchStatus);
-      setStatus(elements.saveStatus);
-      setLoading(elements.fetchButton, true, '正在识别并抓取…');
+      setStatus(elements.siteFormStatus);
+      setLoading(elements.saveSiteButton, true, '正在保存…');
       const body = {
+        id: elements.editingSiteId.value || undefined,
+        name: elements.siteName.value.trim(),
         siteUrl: elements.siteUrl.value.trim(),
         siteType: elements.siteType.value,
         accessToken: elements.accessToken.value,
         userId: elements.userId.value.trim(),
-        tokenMode: elements.tokenMode.value
+        tokenMode: elements.tokenMode.value,
+        clearAccessToken: elements.clearAccessToken.checked
       };
       try {
-        const data = await api('/api/fetch-ratios', { method: 'POST', body: JSON.stringify(body) });
-        showCatalog(data.catalog);
-        setStatus(elements.fetchStatus, `抓取成功：识别到 ${data.catalog.models.length} 个模型、${Object.keys(data.catalog.groupRatio).length} 个价格分组。访问令牌已从输入框清除。`, 'success');
+        const data = await api('/api/save-site', { method: 'POST', body: JSON.stringify(body) });
+        state.selectedSites.add(data.site.id);
+        closeSiteEditor();
+        await loadSites({ openEditorWhenEmpty: false });
+        setStatus(elements.siteLibraryStatus, `已保存「${data.site.name}」，以后直接点击站点框即可抓取。`, 'success');
       } catch (error) {
-        setStatus(elements.fetchStatus, `${error.message}\n请检查令牌、用户 ID 和站点类型；若站点有 Cloudflare 人机验证，本地直连也可能被拦截。`, 'error');
+        setStatus(elements.siteFormStatus, error.message, 'error');
       } finally {
-        elements.accessToken.value = '';
-        elements.accessToken.type = 'password';
-        elements.revealToken.textContent = '显示';
-        setLoading(elements.fetchButton, false, '识别站点并抓取倍率');
+        resetTokenInput();
+        setLoading(elements.saveSiteButton, false, '保存站点');
       }
     });
 
@@ -584,27 +857,62 @@
       elements.revealToken.textContent = showing ? '显示' : '隐藏';
     });
 
-    elements.groupSelect.addEventListener('change', selectAvailableModels);
+    elements.selectAllSites.addEventListener('click', () => {
+      state.selectedSites = new Set(state.sites.map(site => site.id));
+      renderSites();
+    });
+    elements.clearSiteSelection.addEventListener('click', () => {
+      state.selectedSites.clear();
+      renderSites();
+    });
+    elements.addSiteButton.addEventListener('click', () => openSiteEditor());
+    elements.cancelSiteButton.addEventListener('click', closeSiteEditor);
+
+    elements.fetchSelectedButton.addEventListener('click', async () => {
+      setStatus(elements.siteLibraryStatus);
+      setStatus(elements.saveStatus);
+      setLoading(elements.fetchSelectedButton, true, `正在抓取 ${state.selectedSites.size} 个站点…`);
+      try {
+        const data = await api('/api/fetch-sites', {
+          method: 'POST',
+          body: JSON.stringify({ siteIds: [...state.selectedSites] })
+        });
+        const successes = data.results.filter(result => result.ok);
+        const failures = data.results.filter(result => !result.ok);
+        if (successes.length) showBatchResults(data.results);
+        else {
+          elements.resultCard.hidden = true;
+          elements.saveCard.hidden = true;
+        }
+        const details = failures.map(result => `${result.site.name}：${result.message}`).join('\n');
+        setStatus(elements.siteLibraryStatus,
+          `批量抓取完成：成功 ${successes.length} 个，失败 ${failures.length} 个。${details ? `\n${details}` : ''}`,
+          successes.length ? 'success' : 'error');
+      } catch (error) {
+        setStatus(elements.siteLibraryStatus, error.message, 'error');
+      } finally {
+        setLoading(elements.fetchSelectedButton, false);
+        updateSiteSelectionSummary();
+      }
+    });
+
     elements.exchangeRate.addEventListener('input', renderModels);
     elements.modelSearch.addEventListener('input', renderModels);
     elements.selectVisible.addEventListener('click', () => {
-      for (const name of state.visibleSelectable) state.selected.add(name);
+      for (const key of state.visibleSelectable) state.selectedModels.add(key);
       renderModels();
     });
     elements.clearSelection.addEventListener('click', () => {
-      state.selected.clear();
+      state.selectedModels.clear();
       renderModels();
     });
     elements.masterCheckbox.addEventListener('change', () => {
-      for (const name of state.visibleSelectable) {
-        if (elements.masterCheckbox.checked) state.selected.add(name);
-        else state.selected.delete(name);
+      for (const key of state.visibleSelectable) {
+        if (elements.masterCheckbox.checked) state.selectedModels.add(key);
+        else state.selectedModels.delete(key);
       }
       renderModels();
     });
-    document.querySelectorAll('input[name="categoryMode"]').forEach(input => input.addEventListener('change', () => {
-      elements.fixedCategoryField.hidden = input.value !== 'fixed' || !input.checked;
-    }));
 
     elements.saveButton.addEventListener('click', async () => {
       setStatus(elements.saveStatus);
@@ -612,23 +920,23 @@
       if (!Number.isFinite(exchangeRate) || exchangeRate <= 0) {
         return setStatus(elements.saveStatus, '美元汇率必须大于 0', 'error');
       }
-      if (!elements.providerName.value.trim()) {
-        return setStatus(elements.saveStatus, '请填写中转站名称', 'error');
-      }
       setLoading(elements.saveButton, true, '正在合并并保存…');
       try {
         const categoryMode = document.querySelector('input[name="categoryMode"]:checked').value;
-        const data = await api('/api/save-snapshot', {
+        const items = state.results.map(result => ({
+          catalog: result.catalog,
+          selectedModels: result.catalog.models
+            .filter(model => state.selectedModels.has(modelKey(result, model)))
+            .map(model => model.modelName),
+          group: result.group,
+          exchangeRate,
+          provider: result.site.name,
+          categoryMode,
+          fixedCategory: `${result.site.name} 自动抓取`
+        })).filter(item => item.selectedModels.length > 0);
+        const data = await api('/api/save-batch-snapshot', {
           method: 'POST',
-          body: JSON.stringify({
-            catalog: state.catalog,
-            selectedModels: [...state.selected],
-            group: currentGroup(),
-            exchangeRate,
-            provider: elements.providerName.value.trim(),
-            categoryMode,
-            fixedCategory: elements.fixedCategory.value.trim()
-          })
+          body: JSON.stringify({ items })
         });
         setStatus(elements.saveStatus, `保存成功：${data.outputName}\n新增 ${data.added} 条，更新 ${data.updated} 条，跳过 ${data.skipped} 条；新底稿共 ${data.entryCount} 条。现在可以双击“AI价格比对－一键发布”。`, 'success');
         await refreshSnapshotState();
@@ -639,7 +947,7 @@
       }
     });
 
-    refreshSnapshotState();
+    Promise.all([refreshSnapshotState(), loadSites()]);
   </script>
 </body>
 </html>
