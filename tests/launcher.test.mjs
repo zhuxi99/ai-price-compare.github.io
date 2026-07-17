@@ -44,8 +44,8 @@ test('the publish script can safely verify the latest backup without deploying',
     ]);
 
     assert.doesNotMatch(generatedPage, /PUBLISHED_DATA = null/);
-    assert.match(githubPage, /src="background\.webp"/);
-    assert.match(generatedPage, /src="https:\/\/zhuxi99\.github\.io\/ai-price-compare\.github\.io\/background\.webp"/);
+    assert.match(githubPage, /data-src="background\.webp"/);
+    assert.match(generatedPage, /data-src="https:\/\/zhuxi99\.github\.io\/ai-price-compare\.github\.io\/background\.webp"/);
     await assert.rejects(stat(path.join(projectRoot, '.surge', 'background.webp')), /ENOENT/);
     assert.match(result.stdout, /检查成功，未执行线上发布/);
   } finally {

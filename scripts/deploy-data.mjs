@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const DATA_MARKER = 'const PUBLISHED_DATA = null; // __PUBLISHED_DATA__';
-const BACKGROUND_SOURCE_MARKER = 'src="background.webp"';
+const BACKGROUND_SOURCE_MARKER = 'data-src="background.webp"';
 const SHARED_BACKGROUND_URL = 'https://zhuxi99.github.io/ai-price-compare.github.io/background.webp';
 
 function isValidRelayAddress(value) {
@@ -182,7 +182,7 @@ async function main() {
   }
   const surgePage = uploadBackground
     ? githubPage
-    : githubPage.replace(BACKGROUND_SOURCE_MARKER, `src="${SHARED_BACKGROUND_URL}"`);
+    : githubPage.replace(BACKGROUND_SOURCE_MARKER, `data-src="${SHARED_BACKGROUND_URL}"`);
   await mkdir(surgeDirectory, { recursive: true });
   await writeFile(path.join(surgeDirectory, 'index.html'), surgePage);
   await rm(path.join(surgeDirectory, 'background.webm'), { force: true });

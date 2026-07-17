@@ -100,7 +100,8 @@ test('a newer deployment replaces the previously published snapshot in the same 
   const firstRender = await execFile('google-chrome', chromeArgs, { maxBuffer: 2_000_000 });
   assert.match(firstRender.stdout, /测试模型/);
   assert.match(firstRender.stdout, /class="brand-mark"/);
-  assert.match(firstRender.stdout, /class="ambient-image" src="background\.webp"/);
+  assert.match(firstRender.stdout, /class="ambient-image" data-src="background\.webp"/);
+  assert.doesNotMatch(firstRender.stdout, /class="ambient-image" src=/);
   assert.match(firstRender.stdout, /id="categoryFilters" class="category-filter-list"/);
   assert.match(firstRender.stdout, /data-category-filter="" aria-pressed="true">全部/);
   assert.match(firstRender.stdout, /data-category-filter="%E6%B5%8B%E8%AF%95%E5%88%86%E7%B1%BB"/);

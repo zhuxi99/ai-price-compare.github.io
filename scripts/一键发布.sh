@@ -59,6 +59,7 @@ publish_github_pages() {
 prepare_only=false
 upload_background=false
 upload_choice_set=false
+background_feature_enabled=false
 data_path=""
 
 case "${UPLOAD_BACKGROUND_ASSET:-}" in
@@ -76,7 +77,7 @@ for argument in "$@"; do
   esac
 done
 
-if [[ $prepare_only == false && $upload_choice_set == false && -t 0 ]]; then
+if [[ $background_feature_enabled == true && $prepare_only == false && $upload_choice_set == false && -t 0 ]]; then
   printf '背景图片有更换时才需要上传，默认复用线上背景。\n'
   read -r -p '本次是否上传新的背景图片？[y/N] ' upload_answer
   case "$upload_answer" in
