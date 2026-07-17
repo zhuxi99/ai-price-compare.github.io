@@ -1,6 +1,10 @@
 const NEW_API_QUOTA_PRICE_USD_PER_MILLION = 2;
 const LITELLM_MODEL_PRICE_TABLE_URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
 const liteLlmPriceTableCache = new WeakMap();
+const TRACKED_MODEL_PATTERNS = [
+  /gpt[\s._-]*5[._-]6[\s._-]*sol\b/i,
+  /claude[\s._-]*fable[\s._-]*5\b/i
+];
 
 export class RatioFetchError extends Error {
   constructor(message, options = {}) {
@@ -29,6 +33,23 @@ function positiveNumber(value, fallback = null) {
 
 function cleanString(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+export function isTrackedModelName(modelName) {
+  const name = cleanString(modelName);
+  return TRACKED_MODEL_PATTERNS.some(pattern => pattern.test(name));
+}
+
+export function filterTrackedModels(catalog) {
+  const models = (Array.isArray(catalog?.models) ? catalog.models : [])
+    .filter(model => isTrackedModelName(model?.modelName))
+    .sort((left, right) => left.modelName.localeCompare(right.modelName, 'zh-CN', { numeric: true }));
+  if (models.length === 0) {
+    throw new RatioFetchError('该站点没有返回 GPT 5.6 sol 或 Claude Fable 5 模型', {
+      code: 'no-target-model'
+    });
+  }
+  return { ...catalog, models };
 }
 
 function cleanScalar(value) {

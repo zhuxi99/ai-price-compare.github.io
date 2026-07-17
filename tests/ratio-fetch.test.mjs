@@ -300,7 +300,7 @@ test('local ratio server keeps the token out of its response and rejects foreign
       assert.equal(new URL(url).pathname, '/api/pricing');
       return jsonResponse({
         success: true,
-        data: [{ model_name: 'gpt-local', quota_type: 0, model_ratio: 1, completion_ratio: 2, enable_groups: [] }],
+        data: [{ model_name: 'gpt-5.6-sol-local', quota_type: 0, model_ratio: 1, completion_ratio: 2, enable_groups: [] }],
         group_ratio: { default: 1 },
         usable_group: { default: '默认' }
       });
@@ -431,7 +431,7 @@ test('batch fetching uses each saved site token without returning either secret'
       received.set(parsed.hostname, options.headers.Authorization);
       return jsonResponse({
         success: true,
-        data: [{ model_name: `gpt-${parsed.hostname}`, quota_type: 0, model_ratio: 1, completion_ratio: 2, enable_groups: [] }],
+        data: [{ model_name: `gpt-5.6-sol-${parsed.hostname}`, quota_type: 0, model_ratio: 1, completion_ratio: 2, enable_groups: [] }],
         group_ratio: { default: 1 },
         usable_group: { default: '默认' }
       });
@@ -464,6 +464,46 @@ test('batch fetching uses each saved site token without returning either secret'
   assert.equal(received.get('one.example'), 'Bearer secret-one');
   assert.equal(received.get('two.example'), 'Bearer secret-two');
   assert.doesNotMatch(responseText, /secret-one|secret-two/);
+});
+
+test('local fetch server only returns GPT 5.6 sol and Claude Fable 5 variants', async t => {
+  const configDirectory = await mkdtemp(path.join(tmpdir(), 'ai-price-target-models-'));
+  t.after(() => rm(configDirectory, { recursive: true, force: true }));
+  const sitesStore = new SavedSitesStore({ configDirectory });
+  const app = createRatioFetchServer({
+    sitesStore,
+    fetchImpl: async () => jsonResponse({
+      success: true,
+      data: [
+        { model_name: 'gpt-5.6-sol', quota_type: 0, model_ratio: 2.5, completion_ratio: 6 },
+        { model_name: 'GPT 5.4', quota_type: 0, model_ratio: 1.25, completion_ratio: 6 },
+        { model_name: 'claude-fable-5', quota_type: 0, model_ratio: 5, completion_ratio: 5 },
+        { model_name: 'claude-sonnet-5', quota_type: 0, model_ratio: 1, completion_ratio: 5 }
+      ],
+      group_ratio: { default: 1 },
+      usable_group: { default: '默认' }
+    })
+  });
+  const origin = await app.listen();
+  t.after(() => app.close());
+  const savedResponse = await fetch(`${origin}/api/save-site`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: '筛选站', siteUrl: 'https://filter.example' })
+  });
+  const saved = (await savedResponse.json()).site;
+  const response = await fetch(`${origin}/api/fetch-sites`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ siteIds: [saved.id] })
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.results[0].ok, true);
+  assert.deepEqual(body.results[0].catalog.models.map(model => model.modelName), [
+    'claude-fable-5', 'gpt-5.6-sol'
+  ]);
 });
 
 test('batch fetching separates sites waiting for a login token from real failures', async t => {

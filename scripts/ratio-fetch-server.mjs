@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { findLatestSnapshot } from './deploy-data.mjs';
 import {
   fetchRatioCatalog,
+  filterTrackedModels,
   mergeCatalogIntoSnapshot,
   normalizeSiteUrl,
   RatioFetchError
@@ -192,14 +193,14 @@ export function createRatioFetchServer({
 
       if (request.method === 'POST' && url.pathname === '/api/fetch-ratios') {
         const body = await readJsonBody(request);
-        const catalog = await fetchRatioCatalog({
+        const catalog = filterTrackedModels(await fetchRatioCatalog({
           siteUrl: body.siteUrl,
           accessToken: body.accessToken,
           userId: body.userId,
           tokenMode: body.tokenMode,
           siteType: body.siteType,
           fetchImpl
-        });
+        }));
         return jsonResponse(response, 200, { ok: true, catalog: publicCatalog(catalog) });
       }
 
@@ -241,14 +242,14 @@ export function createRatioFetchServer({
         const sites = await Promise.all(siteIds.map(id => sitesStore.getSiteWithToken(id)));
         const results = await mapWithConcurrency(sites, 3, async site => {
           try {
-            const catalog = await fetchRatioCatalog({
+            const catalog = filterTrackedModels(await fetchRatioCatalog({
               siteUrl: site.siteUrl,
               accessToken: site.accessToken,
               userId: site.userId,
               tokenMode: site.tokenMode,
               siteType: site.siteType,
               fetchImpl
-            });
+            }));
             return {
               ok: true,
               site: { ...site, accessToken: undefined },
