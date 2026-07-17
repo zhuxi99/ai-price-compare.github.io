@@ -333,9 +333,10 @@
             <div class="field">
               <label for="siteType">站点类型</label>
               <select id="siteType" class="control">
-                <option value="auto">自动识别（推荐）</option>
+                <option value="auto">自动识别 New API / One Hub / Sub2API（推荐）</option>
                 <option value="new-api">New API / One API / Veloera</option>
                 <option value="one-hub">One Hub / Done Hub</option>
+                <option value="sub2api">Sub2API / JWT 后台</option>
               </select>
             </div>
             <div class="field">
@@ -349,7 +350,7 @@
                 <input id="accessToken" class="control" type="password" autocomplete="new-password" spellcheck="false" placeholder="可留空；需要鉴权的站点再填写">
                 <button id="revealToken" class="reveal-button" type="button">显示</button>
               </div>
-              <span class="hint">编辑站点时留空会保留原令牌；新令牌会覆盖旧令牌。</span>
+              <span class="hint">编辑站点时留空会保留原令牌；新令牌会覆盖旧令牌。Sub2API 请填写登录 JWT，工具会自动读取账号中的 API Key。</span>
             </div>
             <div class="field">
               <label for="userId">用户 ID（可选）</label>
@@ -420,7 +421,7 @@
           </table>
           <div id="emptyModels" class="empty" hidden>当前分组没有可用模型，或没有符合筛选条件的模型</div>
         </div>
-        <p class="hint">价格按 New API 规则换算：倍率 1 对应 2 美元额度 / 1M tokens；实付倍率 = 分组倍率 ÷ 每 1 元到账的美元额度。普通 1:1 不变，充值 1→10 会再除以 10。接口未提供缓存倍率时，缓存输入价暂按普通输入价计算；按次计费模型不会写入当前价格表。</p>
+        <p class="hint">New API 价格按接口倍率计算；Sub2API 使用账号 API Key 的模型列表、站点分组倍率和 LiteLLM 官方价格表估算。实付倍率 = 分组倍率 ÷ 每 1 元到账的美元额度。普通 1:1 不变，充值 1→10 会再除以 10；按次计费模型不会写入当前价格表。</p>
       </div>
     </section>
 
@@ -787,7 +788,10 @@
         name.textContent = result.site.name;
         const meta = document.createElement('div');
         meta.className = 'fetched-site-meta';
-        meta.textContent = `${result.catalog.sourceType === 'one-hub' ? 'One Hub 系' : 'New API 系'} · ${result.catalog.models.length} 个模型 · 1元→$${formatNumber(result.site.creditPerCny, 2)}额度`;
+        const sourceLabel = result.catalog.sourceType === 'one-hub'
+          ? 'One Hub 系'
+          : result.catalog.sourceType === 'sub2api' ? 'Sub2API 估算' : 'New API 系';
+        meta.textContent = `${sourceLabel} · ${result.catalog.models.length} 个模型 · 1元→$${formatNumber(result.site.creditPerCny, 2)}额度`;
         copy.append(name, meta);
         const select = document.createElement('select');
         select.className = 'control compact-control';

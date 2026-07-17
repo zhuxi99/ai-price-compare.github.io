@@ -95,6 +95,66 @@ test('auto detection falls back to One Hub endpoints', async () => {
   assert.equal(catalog.groupRatio.vip, 0.75);
 });
 
+test('fetches Sub2API runtime models and estimates prices from a saved dashboard JWT', async () => {
+  const receivedApiKeys = [];
+  const fetchImpl = async (url, options = {}) => {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'raw.githubusercontent.com') {
+      return jsonResponse({
+        'gpt-sub2': { input_cost_per_token: 0.000005, output_cost_per_token: 0.00002 },
+        'claude-sub2': { input_cost_per_token: 0.000003, output_cost_per_token: 0.000015 }
+      });
+    }
+    if (parsed.pathname === '/api/v1/groups/available') {
+      assert.equal(options.headers.Authorization, 'Bearer dashboard-jwt');
+      return jsonResponse({ code: 0, message: 'ok', data: [{ id: 9, name: 'vip', rate_multiplier: 1.5 }] });
+    }
+    if (parsed.pathname === '/api/v1/groups/rates') {
+      return jsonResponse({ code: 0, message: 'ok', data: { 9: 2 } });
+    }
+    if (parsed.pathname === '/api/v1/keys') {
+      return jsonResponse({ code: 0, message: 'ok', data: { items: [
+        { id: 1, key: 'sk-runtime-one', status: 'active', group_id: 9 },
+        { id: 2, key: 'sk-runtime-two', status: 'active', group: { id: 9, name: 'vip' } }
+      ] } });
+    }
+    if (parsed.pathname === '/v1/models') {
+      receivedApiKeys.push(options.headers.Authorization);
+      return jsonResponse({ object: 'list', data: [
+        { id: 'gpt-sub2' }, { id: 'claude-sub2' }, { id: 'unknown-custom-model' }
+      ] });
+    }
+    throw new Error(`unexpected URL ${url}`);
+  };
+
+  const catalog = await fetchRatioCatalog({
+    siteUrl: 'https://sub2.example', accessToken: 'dashboard-jwt',
+    siteType: 'sub2api', fetchImpl
+  });
+  assert.equal(catalog.sourceType, 'sub2api');
+  assert.deepEqual(catalog.groupRatio, { vip: 2 });
+  assert.deepEqual(catalog.models.map(model => model.modelName), ['claude-sub2', 'gpt-sub2']);
+  assert.equal(catalog.models[1].directInputUsd, 5);
+  assert.equal(catalog.models[1].directOutputUsd, 20);
+  assert.deepEqual(catalog.models[1].enableGroups, ['vip']);
+  assert.deepEqual(receivedApiKeys.sort(), ['Bearer sk-runtime-one', 'Bearer sk-runtime-two']);
+});
+
+test('auto detection identifies a Sub2API site and asks for its dashboard JWT', async () => {
+  const fetchImpl = async url => {
+    const pathname = new URL(url).pathname;
+    if (pathname === '/api/pricing') return jsonResponse({ message: 'not found' }, 404);
+    if (pathname === '/api/v1/auth/me') {
+      return jsonResponse({ code: 'UNAUTHORIZED', message: 'Authorization header is required' }, 401);
+    }
+    throw new Error(`unexpected URL ${url}`);
+  };
+  await assert.rejects(
+    fetchRatioCatalog({ siteUrl: 'https://sub2.example', fetchImpl }),
+    /Sub2API.*登录访问令牌/
+  );
+});
+
 test('reports connection timeouts clearly instead of a generic fetch failure', async () => {
   const timeout = new TypeError('fetch failed', { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } });
   await assert.rejects(

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { normalizeSiteUrl, RatioFetchError } from './ratio-fetch-core.mjs';
 
 const STORE_VERSION = 1;
-const SITE_TYPES = new Set(['auto', 'new-api', 'one-hub']);
+const SITE_TYPES = new Set(['auto', 'new-api', 'one-hub', 'sub2api']);
 const TOKEN_MODES = new Set(['bearer', 'raw']);
 
 function cleanString(value) {

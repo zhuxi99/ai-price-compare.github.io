@@ -1,4 +1,6 @@
 const NEW_API_QUOTA_PRICE_USD_PER_MILLION = 2;
+const LITELLM_MODEL_PRICE_TABLE_URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
+const liteLlmPriceTableCache = new WeakMap();
 
 export class RatioFetchError extends Error {
   constructor(message, options = {}) {
@@ -26,6 +28,12 @@ function positiveNumber(value, fallback = null) {
 
 function cleanString(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function cleanScalar(value) {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return '';
 }
 
 function isRecord(value) {
@@ -140,6 +148,152 @@ function unwrapEnvelope(payload) {
   if (!isRecord(payload)) return payload;
   if (isRecord(payload.data) && typeof payload.success === 'boolean') return payload.data;
   return payload;
+}
+
+async function probeSub2Api(fetchImpl, baseUrl, headers, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetchImpl(`${baseUrl}/api/v1/auth/me`, {
+      method: 'GET', headers, redirect: 'follow', signal: controller.signal
+    });
+    if (!/json/i.test(response.headers.get('content-type') || '')) return false;
+    const payload = await response.json();
+    return isRecord(payload)
+      && (typeof payload.code === 'string' || payload.code === 0)
+      && ('message' in payload || 'data' in payload);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function unwrapSub2Api(payload, endpoint) {
+  if (!isRecord(payload) || payload.code !== 0 || !('data' in payload)) {
+    const message = cleanString(payload?.message ?? payload?.msg);
+    throw new RatioFetchError(message || `Sub2API 的 ${endpoint} 返回格式不兼容`);
+  }
+  return payload.data;
+}
+
+function sub2Items(payload) {
+  if (Array.isArray(payload)) return payload;
+  return isRecord(payload) && Array.isArray(payload.items) ? payload.items : [];
+}
+
+function parseRuntimeModelIds(payload) {
+  const rows = Array.isArray(payload) ? payload : isRecord(payload) && Array.isArray(payload.data) ? payload.data : [];
+  return rows.map(row => cleanString(isRecord(row) ? row.id ?? row.model : row)).filter(Boolean);
+}
+
+function normalizeLiteLlmPriceTable(payload) {
+  if (!isRecord(payload)) throw new RatioFetchError('官方模型价格表格式无效');
+  const prices = new Map();
+  for (const [modelName, value] of Object.entries(payload)) {
+    if (!isRecord(value) || modelName === 'sample_spec') continue;
+    const input = nonNegativeNumber(value.input_cost_per_token, null);
+    const output = nonNegativeNumber(value.output_cost_per_token, null);
+    if (input === null || output === null) continue;
+    prices.set(modelName, {
+      input: input * 1_000_000,
+      output: output * 1_000_000,
+      cache: nonNegativeNumber(value.cache_read_input_token_cost, null) === null
+        ? null
+        : Number(value.cache_read_input_token_cost) * 1_000_000
+    });
+  }
+  return prices;
+}
+
+async function loadLiteLlmPriceTable(fetchImpl, timeoutMs) {
+  if (!liteLlmPriceTableCache.has(fetchImpl)) {
+    const request = fetchJson(fetchImpl, LITELLM_MODEL_PRICE_TABLE_URL, { Accept: 'application/json' }, timeoutMs)
+      .then(normalizeLiteLlmPriceTable)
+      .catch(error => {
+        liteLlmPriceTableCache.delete(fetchImpl);
+        throw error;
+      });
+    liteLlmPriceTableCache.set(fetchImpl, request);
+  }
+  return liteLlmPriceTableCache.get(fetchImpl);
+}
+
+async function fetchSub2ApiCatalog({ baseUrl, accessToken, timeoutMs, fetchImpl }) {
+  const token = cleanString(accessToken).replace(/^Bearer\s+/i, '');
+  if (!token) throw new RatioFetchError('已识别为 Sub2API，请填写该站点的登录访问令牌（JWT）');
+  const dashboardHeaders = { Accept: 'application/json', Authorization: `Bearer ${token}` };
+  const [groupsPayload, ratesPayload, keysPayload, officialPrices] = await Promise.all([
+    fetchJson(fetchImpl, `${baseUrl}/api/v1/groups/available`, dashboardHeaders, timeoutMs),
+    fetchJson(fetchImpl, `${baseUrl}/api/v1/groups/rates`, dashboardHeaders, timeoutMs),
+    fetchJson(fetchImpl, `${baseUrl}/api/v1/keys?page=1&page_size=100`, dashboardHeaders, timeoutMs),
+    loadLiteLlmPriceTable(fetchImpl, timeoutMs)
+  ]);
+  const groups = sub2Items(unwrapSub2Api(groupsPayload, '/api/v1/groups/available'));
+  const rates = unwrapSub2Api(ratesPayload, '/api/v1/groups/rates');
+  const keys = sub2Items(unwrapSub2Api(keysPayload, '/api/v1/keys'))
+    .filter(key => isRecord(key) && cleanString(key.key) && !/inactive|disabled|expired/i.test(cleanString(key.status)))
+    .slice(0, 20);
+  if (keys.length === 0) throw new RatioFetchError('Sub2API 账号没有可用的 API Key，请先在站点控制台创建一个');
+
+  const groupById = new Map();
+  const groupRatio = {};
+  const usableGroup = {};
+  for (const group of groups) {
+    if (!isRecord(group)) continue;
+    const id = cleanScalar(group.id);
+    const name = cleanString(group.name);
+    if (!id || !name) continue;
+    const ratio = positiveNumber(isRecord(rates) ? rates[id] : null, positiveNumber(group.rate_multiplier, 1));
+    groupById.set(id, name);
+    groupRatio[name] = ratio;
+    usableGroup[name] = name;
+  }
+
+  const modelGroups = new Map();
+  const runtimeResults = await Promise.allSettled(keys.map(async key => {
+    const apiKey = cleanString(key.key).replace(/^Bearer\s+/i, '');
+    const groupId = cleanScalar(key.group_id ?? key.group?.id ?? key.Group?.id);
+    const groupName = groupById.get(groupId)
+      || cleanString(key.group?.name ?? key.Group?.name)
+      || 'default';
+    if (!Object.hasOwn(groupRatio, groupName)) {
+      groupRatio[groupName] = 1;
+      usableGroup[groupName] = groupName;
+    }
+    const runtimePayload = await fetchJson(fetchImpl, `${baseUrl}/v1/models`, {
+      Accept: 'application/json', Authorization: `Bearer ${apiKey}`
+    }, timeoutMs);
+    for (const modelName of parseRuntimeModelIds(runtimePayload)) {
+      if (!modelGroups.has(modelName)) modelGroups.set(modelName, new Set());
+      modelGroups.get(modelName).add(groupName);
+    }
+  }));
+  if (runtimeResults.every(result => result.status === 'rejected')) {
+    throw new RatioFetchError('Sub2API 的 API Key 均无法读取模型，请在站点控制台检查 Key 是否有效');
+  }
+
+  const models = [...modelGroups.entries()].flatMap(([modelName, enabled]) => {
+    const price = officialPrices.get(modelName);
+    if (!price) return [];
+    return [{
+      modelName,
+      quotaType: 0,
+      modelRatio: price.input / NEW_API_QUOTA_PRICE_USD_PER_MILLION,
+      completionRatio: price.input > 0 ? price.output / price.input : 1,
+      cacheRatio: price.cache === null || price.input <= 0 ? null : price.cache / price.input,
+      directInputUsd: price.input,
+      directOutputUsd: price.output,
+      directCacheUsd: price.cache,
+      enableGroups: [...enabled],
+      owner: '',
+      billingType: 'tokens'
+    }];
+  }).sort((left, right) => left.modelName.localeCompare(right.modelName, 'zh-CN', { numeric: true }));
+  if (models.length === 0) {
+    throw new RatioFetchError('Sub2API 已读取模型，但官方价格表没有匹配项，暂时无法估算价格');
+  }
+  return { sourceType: 'sub2api', models, groupRatio, usableGroup };
 }
 
 function normalizeGroupMaps(groupRatioValue, usableGroupValue) {
@@ -261,6 +415,19 @@ export async function fetchRatioCatalog({
     } catch (error) {
       if (siteType === 'new-api') throw error;
       errors.push(`New API：${error.message}`);
+    }
+  }
+
+  if (siteType === 'auto' || siteType === 'sub2api') {
+    const detected = siteType === 'sub2api'
+      || await probeSub2Api(fetchImpl, baseUrl, headers, Math.min(timeoutMs, 8_000));
+    if (detected) {
+      try {
+        return { baseUrl, ...await fetchSub2ApiCatalog({ baseUrl, accessToken, timeoutMs, fetchImpl }) };
+      } catch (error) {
+        if (siteType === 'sub2api' || /登录访问令牌|API Key/.test(error.message)) throw error;
+        errors.push(`Sub2API：${error.message}`);
+      }
     }
   }
 
