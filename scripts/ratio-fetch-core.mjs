@@ -636,7 +636,6 @@ export function mergeCatalogIntoSnapshot({
   catalog,
   selectedModels,
   group = 'default',
-  exchangeRate,
   creditPerCny = 1,
   provider,
   categoryMode = 'auto',
@@ -653,7 +652,7 @@ export function mergeCatalogIntoSnapshot({
   );
   const groupRatio = positiveNumber(catalog.groupRatio?.[group], 1);
   const normalizedCreditPerCny = positiveNumber(creditPerCny, 1);
-  const cnyPerUsdCredit = positiveNumber(exchangeRate, 1 / normalizedCreditPerCny);
+  const effectiveMultiplier = groupRatio / normalizedCreditPerCny;
   const now = Date.now();
   const nextEntries = snapshot.entries.map(entry => ({ ...entry }));
   let added = 0;
@@ -673,7 +672,7 @@ export function mergeCatalogIntoSnapshot({
       skipped += 1;
       continue;
     }
-    const prices = calculateModelPrices(model, cnyPerUsdCredit, groupRatio);
+    const prices = calculateModelPrices(model, 1, effectiveMultiplier);
     const canonicalName = canonicalTrackedModelName(model.modelName);
     const category = categoryMode === 'fixed' ? fixedCategoryName : classifyModel(canonicalName);
     const entryData = {
@@ -682,7 +681,7 @@ export function mergeCatalogIntoSnapshot({
       provider: providerName,
       relayAddress: catalog.baseUrl,
       useMultiplier: true,
-      multiplier: groupRatio,
+      multiplier: effectiveMultiplier,
       baseInputPrice: prices.baseInputPrice,
       baseCacheInputPrice: prices.baseCacheInputPrice,
       baseOutputPrice: prices.baseOutputPrice,

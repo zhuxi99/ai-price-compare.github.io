@@ -357,9 +357,9 @@
               </select>
             </div>
             <div class="field">
-              <label for="creditPerCny">充值到账额度（美元/1元）</label>
+              <label for="creditPerCny">充值比例（默认 1:1）</label>
               <input id="creditPerCny" class="control" type="number" min="0.01" step="0.01" value="1" inputmode="decimal" required>
-              <span class="hint">普通 1:1 填 1；充值 1 元到账 10 美元额度就填 10。</span>
+              <span class="hint">绝大多数站点填 1。只有明确为“1 元到账 10 美元额度”的站点才填 10，最终倍率会自动除以 10。</span>
             </div>
             <div class="field wide">
               <label for="accessToken">访问令牌</label>
@@ -413,7 +413,7 @@
         <div id="fetchedSites" class="fetched-sites"></div>
 
         <div class="result-toolbar">
-          <input id="modelSearch" class="control search" type="search" placeholder="筛选站点、模型名称或自动分类">
+          <input id="modelSearch" class="control search" type="search" placeholder="筛选站点或模型名称">
           <button id="selectVisible" class="button" type="button">全选当前结果</button>
           <button id="clearSelection" class="button" type="button">取消全选</button>
           <span id="resultMeta" class="result-meta"></span>
@@ -425,20 +425,17 @@
                 <th><input id="masterCheckbox" type="checkbox" aria-label="全选"></th>
                 <th>站点</th>
                 <th>模型</th>
-                <th>自动分类</th>
-                <th>模型倍率</th>
-                <th>输出倍率</th>
-                <th>分组倍率</th>
-                <th>实付倍率</th>
-                <th>输入价</th>
-                <th>输出价</th>
+                <th>最终倍率</th>
+                <th>输入价（$/1M）</th>
+                <th>缓存价（$/1M）</th>
+                <th>输出价（$/1M）</th>
               </tr>
             </thead>
             <tbody id="modelRows"></tbody>
           </table>
           <div id="emptyModels" class="empty" hidden>当前分组没有可用模型，或没有符合筛选条件的模型</div>
         </div>
-        <p class="hint">New API 价格按接口倍率计算；Sub2API 使用账号 API Key 的模型列表、站点分组倍率和 LiteLLM 官方价格表估算。实付倍率 = 分组倍率 ÷ 每 1 元到账的美元额度。普通 1:1 不变，充值 1→10 会再除以 10；按次计费模型不会写入当前价格表。</p>
+        <p class="hint">基础价格统一使用美元。最终倍率已经包含充值比例：普通 1:1 等于站点分组倍率，充值 1:10 会自动再除以 10。表中的输入、缓存和输出价格都是最终价格。</p>
       </div>
     </section>
 
@@ -579,7 +576,7 @@
         domain.textContent = siteHost(site.siteUrl);
         const tokenState = document.createElement('span');
         tokenState.className = `token-state${site.hasAccessToken ? '' : ' missing'}`;
-        tokenState.textContent = `${site.hasAccessToken ? '已保存令牌' : '未保存令牌'} · 1元→$${formatNumber(site.creditPerCny, 2)}额度`;
+        tokenState.textContent = `${site.hasAccessToken ? '已保存令牌' : '未保存令牌'} · ${Number(site.creditPerCny) === 1 ? '普通 1:1' : `充值 1:${formatNumber(site.creditPerCny, 2)}`}`;
         copy.append(name, domain, tokenState);
         selectButton.append(dot, copy);
         selectButton.addEventListener('click', () => {
@@ -730,11 +727,16 @@
     }
 
     function calculatePrice(result, model) {
-      const exchange = 1 / (Number(result.site.creditPerCny) || 1);
-      const groupRatio = resultGroupRatio(result);
+      const multiplier = resultGroupRatio(result) / (Number(result.site.creditPerCny) || 1);
       const baseInput = model.directInputUsd ?? model.modelRatio * 2;
+      const baseCache = model.directCacheUsd ?? baseInput * (model.cacheRatio ?? 1);
       const baseOutput = model.directOutputUsd ?? baseInput * model.completionRatio;
-      return { input: baseInput * exchange * groupRatio, output: baseOutput * exchange * groupRatio };
+      return {
+        multiplier,
+        input: baseInput * multiplier,
+        cache: baseCache * multiplier,
+        output: baseOutput * multiplier
+      };
     }
 
     function formatNumber(value, digits = 4) {
@@ -761,8 +763,7 @@
         .filter(({ result, model }) => isAvailable(result, model))
         .filter(({ result, model }) => !query
           || result.site.name.toLowerCase().includes(query)
-          || model.modelName.toLowerCase().includes(query)
-          || classifyModel(model.modelName).toLowerCase().includes(query))
+          || model.modelName.toLowerCase().includes(query))
         .sort((left, right) => {
           const family = categoryRank(classifyModel(left.model.modelName)) - categoryRank(classifyModel(right.model.modelName));
           if (family) return family;
@@ -803,17 +804,11 @@
         siteCell.title = result.site.name;
         const nameCell = appendCell(row, model.modelName, 'model-name');
         nameCell.title = model.modelName;
-        const category = document.createElement('span');
-        category.className = 'category-chip';
-        category.textContent = classifyModel(model.modelName);
-        appendCell(row, category);
-        appendCell(row, `×${formatNumber(model.modelRatio)}`);
-        appendCell(row, `×${formatNumber(model.completionRatio)}`);
-        appendCell(row, `×${formatNumber(resultGroupRatio(result))}`);
-        appendCell(row, `×${formatNumber(resultGroupRatio(result) / (Number(result.site.creditPerCny) || 1))}`);
         const prices = calculatePrice(result, model);
-        appendCell(row, `¥${formatNumber(prices.input, 2)}`, 'price');
-        appendCell(row, `¥${formatNumber(prices.output, 2)}`, 'price');
+        appendCell(row, `×${formatNumber(prices.multiplier, 6)}`);
+        appendCell(row, `$${formatNumber(prices.input, 6)}`, 'price');
+        appendCell(row, `$${formatNumber(prices.cache, 6)}`, 'price');
+        appendCell(row, `$${formatNumber(prices.output, 6)}`, 'price');
         elements.modelRows.appendChild(row);
       }
 
@@ -852,7 +847,10 @@
         const sourceLabel = result.catalog.sourceType === 'one-hub'
           ? 'One Hub 系'
           : result.catalog.sourceType === 'sub2api' ? 'Sub2API 估算' : 'New API 系';
-        meta.textContent = `${sourceLabel} · ${result.catalog.models.length} 个模型 · 1元→$${formatNumber(result.site.creditPerCny, 2)}额度`;
+        const recharge = Number(result.site.creditPerCny) === 1
+          ? '普通 1:1'
+          : `充值 1:${formatNumber(result.site.creditPerCny, 2)}`;
+        meta.textContent = `${sourceLabel} · ${result.catalog.models.length} 个模型 · ${recharge}`;
         copy.append(name, meta);
         const select = document.createElement('select');
         select.className = 'control compact-control';
@@ -991,7 +989,7 @@
           elements.saveCard.hidden = true;
         }
         setStatus(elements.siteLibraryStatus,
-          `批量抓取完成：成功 ${successes.length} 个，待补令牌 ${tokenProblems.length} 个，其他失败 ${otherFailures.length} 个。`,
+          `批量抓取完成：成功 ${successes.length} 个，待补令牌 ${tokenProblems.length} 个，其他失败 ${otherFailures.length} 个。失败站点没有参与价格比较，网站中的旧价格不会被当成最新价格。`,
           otherFailures.length ? (successes.length ? 'warning' : 'error') : tokenProblems.length ? 'warning' : 'success');
       } catch (error) {
         setStatus(elements.siteLibraryStatus, error.message, 'error');
@@ -1040,9 +1038,9 @@
         });
         if (data.outputName) {
           const changeLines = data.changes.map(change => {
-            const after = `输入 ¥${formatNumber(change.after.input, 8)} / 缓存 ¥${formatNumber(change.after.cache, 8)} / 输出 ¥${formatNumber(change.after.output, 8)}`;
+            const after = `输入 $${formatNumber(change.after.input, 8)} / 缓存 $${formatNumber(change.after.cache, 8)} / 输出 $${formatNumber(change.after.output, 8)}`;
             if (change.type === 'added') return `新增：${change.provider} · ${change.modelName} → ${after}`;
-            const before = `输入 ¥${formatNumber(change.before.input, 8)} / 缓存 ¥${formatNumber(change.before.cache, 8)} / 输出 ¥${formatNumber(change.before.output, 8)}`;
+            const before = `输入 $${formatNumber(change.before.input, 8)} / 缓存 $${formatNumber(change.before.cache, 8)} / 输出 $${formatNumber(change.before.output, 8)}`;
             return `变化：${change.provider} · ${change.modelName}｜${before} → ${after}`;
           });
           setStatus(elements.saveStatus, `保存成功：${data.outputName}\n新增 ${data.added} 条，价格变化 ${data.updated} 条，未变化 ${data.unchanged} 条，跳过 ${data.skipped} 条；新底稿共 ${data.entryCount} 条。\n${changeLines.join('\n')}\n现在可以双击“AI价格比对－一键发布”。`, 'success');

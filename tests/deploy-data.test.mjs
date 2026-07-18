@@ -106,6 +106,10 @@ test('a newer deployment replaces the previously published snapshot in the same 
   assert.match(firstRender.stdout, /data-category-filter="" aria-pressed="true">全部/);
   assert.match(firstRender.stdout, /data-category-filter="%E6%B5%8B%E8%AF%95%E5%88%86%E7%B1%BB"/);
   assert.match(firstRender.stdout, /class="price-cell price-output" data-label="输出价"/);
+  assert.match(firstRender.stdout, /最终倍率（已含充值比例）/);
+  assert.match(firstRender.stdout, /输入价（\$\/1M tokens）/);
+  assert.match(firstRender.stdout, /class="price-value">\$1<\/span>/);
+  assert.doesNotMatch(firstRender.stdout, /元\/1M tokens/);
   assert.match(firstRender.stdout, /class="relay-address" href="https:\/\/relay\.example\/register"/);
 
   const secondSnapshot = validSnapshot({

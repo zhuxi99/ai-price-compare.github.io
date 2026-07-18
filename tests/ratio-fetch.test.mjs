@@ -34,6 +34,11 @@ test('local fetch UI hides models unavailable in the selected group', async () =
   assert.match(page, /当前分组可用 \$\{availableModels\} 个/);
   assert.match(page, /formatNumber\(change\.after\.input, 8\)/);
   assert.match(page, /formatNumber\(change\.after\.cache, 8\)/);
+  assert.match(page, /<th>最终倍率<\/th>/);
+  assert.match(page, /<th>缓存价（\$\/1M）<\/th>/);
+  assert.doesNotMatch(page, /<th>模型倍率<\/th>|<th>输出倍率<\/th>|<th>分组倍率<\/th>/);
+  assert.doesNotMatch(page, /¥/);
+  assert.match(page, /const multiplier = resultGroupRatio\(result\) \/ \(Number\(result\.site\.creditPerCny\) \|\| 1\)/);
 });
 
 test('canonicalizes only exact tracked model names and rejects explanatory suffixes', () => {
@@ -284,7 +289,7 @@ test('merges selected models without persisting access tokens', () => {
   };
   const result = mergeCatalogIntoSnapshot({
     snapshot, catalog, selectedModels: ['GPT 5.6 sol'], group: 'default',
-    exchangeRate: 7.2, provider: '测试站', categoryMode: 'auto'
+    provider: '测试站', categoryMode: 'auto'
   });
   assert.equal(result.added, 0);
   assert.equal(result.updated, 1);
@@ -292,7 +297,7 @@ test('merges selected models without persisting access tokens', () => {
   assert.equal(result.snapshot.entries[0].provider, '旧名称');
   assert.equal(result.snapshot.entries[0].relayAddress, 'https://relay.example/register');
   assert.equal(result.snapshot.entries[0].multiplier, 0.8);
-  assert.equal(result.snapshot.entries[0].baseInputPrice, 18);
+  assert.equal(result.snapshot.entries[0].baseInputPrice, 2.5);
   assert.doesNotMatch(JSON.stringify(result.snapshot), /token|secret|authorization/i);
 });
 
@@ -434,7 +439,48 @@ test('keeps duplicate price tiers unchanged when any matching tier has the fetch
   assert.equal(result.snapshot.exportedAt, snapshot.exportedAt);
 });
 
-test('applies each site recharge credit ratio to the effective CNY price', () => {
+test('detects Cat.ai changing from a 0.06 tier to a 0.1 final multiplier', () => {
+  const snapshot = {
+    exportedAt: '2026-07-17T00:00:00.000Z', version: 2,
+    entries: [
+      {
+        id: 'cat-low', modelName: 'GPT 5.6 sol', category: '低档', provider: 'Cat.ai',
+        relayAddress: 'https://aicat.sumnece.com/register', useMultiplier: true,
+        multiplier: 0.06, baseInputPrice: 5, baseCacheInputPrice: 6.25,
+        baseOutputPrice: 30, createdAt: 1, updatedAt: 2
+      },
+      {
+        id: 'cat-high', modelName: 'GPT 5.6 sol', category: '高档', provider: 'Cat.ai',
+        relayAddress: 'https://aicat.sumnece.com/register', useMultiplier: true,
+        multiplier: 0.15, baseInputPrice: 5, baseCacheInputPrice: 6.25,
+        baseOutputPrice: 30, createdAt: 3, updatedAt: 4
+      }
+    ]
+  };
+  const catalog = {
+    baseUrl: 'https://aicat.sumnece.com', groupRatio: { default: 0.1 },
+    usableGroup: { default: '默认' },
+    models: [{
+      modelName: 'gpt-5.6-sol', billingType: 'tokens', modelRatio: 2.5,
+      completionRatio: 6, cacheRatio: 1.25, directInputUsd: null,
+      directOutputUsd: null, directCacheUsd: null, enableGroups: []
+    }]
+  };
+
+  const result = mergeCatalogIntoSnapshot({
+    snapshot, catalog, selectedModels: ['GPT 5.6 sol'], group: 'default',
+    creditPerCny: 1, provider: 'Cat.ai'
+  });
+
+  assert.equal(result.updated, 1);
+  assert.equal(result.unchanged, 0);
+  assert.equal(result.changes[0].before.input, 0.3);
+  assert.equal(result.changes[0].after.input, 0.5);
+  assert.equal(result.snapshot.entries.find(entry => entry.id === 'cat-low').multiplier, 0.1);
+  assert.equal(result.snapshot.entries.find(entry => entry.id === 'cat-high').multiplier, 0.15);
+});
+
+test('stores USD list prices and folds recharge credit into the final multiplier', () => {
   const snapshot = { exportedAt: '2026-07-17T00:00:00.000Z', version: 2, entries: [] };
   const catalog = {
     baseUrl: 'https://bonus.example', sourceType: 'new-api',
@@ -450,9 +496,9 @@ test('applies each site recharge credit ratio to the effective CNY price', () =>
     provider: '充值赠送站', creditPerCny: 10, categoryMode: 'auto'
   });
   const [entry] = result.snapshot.entries;
-  assert.equal(entry.baseInputPrice, 0.5);
-  assert.equal(entry.baseOutputPrice, 2);
-  assert.equal(entry.multiplier, 0.5);
+  assert.equal(entry.baseInputPrice, 5);
+  assert.equal(entry.baseOutputPrice, 20);
+  assert.equal(entry.multiplier, 0.05);
   assert.equal(entry.baseInputPrice * entry.multiplier, 0.25);
 });
 
