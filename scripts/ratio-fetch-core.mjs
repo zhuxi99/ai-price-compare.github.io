@@ -1,10 +1,6 @@
 const NEW_API_QUOTA_PRICE_USD_PER_MILLION = 2;
 const LITELLM_MODEL_PRICE_TABLE_URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
 const liteLlmPriceTableCache = new WeakMap();
-const TRACKED_MODEL_PATTERNS = [
-  /gpt[\s._-]*5[._-]6[\s._-]*sol\b/i,
-  /claude[\s._-]*fable[\s._-]*5\b/i
-];
 
 export class RatioFetchError extends Error {
   constructor(message, options = {}) {
@@ -35,14 +31,26 @@ function cleanString(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-export function isTrackedModelName(modelName) {
+export function canonicalTrackedModelName(modelName) {
   const name = cleanString(modelName);
-  return TRACKED_MODEL_PATTERNS.some(pattern => pattern.test(name));
+  if (/^gpt[\s._-]*5[._-]6[\s._-]*sol$/i.test(name)) return 'GPT 5.6 sol';
+  if (/^claude[\s._-]*fable[\s._-]*5$/i.test(name)) return 'Claude Fable 5';
+  return '';
+}
+
+export function isTrackedModelName(modelName) {
+  return Boolean(canonicalTrackedModelName(modelName));
 }
 
 export function filterTrackedModels(catalog) {
-  const models = (Array.isArray(catalog?.models) ? catalog.models : [])
-    .filter(model => isTrackedModelName(model?.modelName))
+  const modelsByName = new Map();
+  for (const model of Array.isArray(catalog?.models) ? catalog.models : []) {
+    const canonicalName = canonicalTrackedModelName(model?.modelName);
+    if (canonicalName && !modelsByName.has(canonicalName)) {
+      modelsByName.set(canonicalName, { ...model, modelName: canonicalName });
+    }
+  }
+  const models = [...modelsByName.values()]
     .sort((left, right) => left.modelName.localeCompare(right.modelName, 'zh-CN', { numeric: true }));
   if (models.length === 0) {
     throw new RatioFetchError('该站点没有返回 GPT 5.6 sol 或 Claude Fable 5 模型', {
@@ -591,6 +599,38 @@ function sameSite(left, right) {
   }
 }
 
+function modelIdentity(modelName) {
+  return canonicalTrackedModelName(modelName).toLowerCase();
+}
+
+function nearlyEqual(left, right) {
+  const first = finiteNumber(left, 0);
+  const second = finiteNumber(right, 0);
+  return Math.abs(first - second) <= 1e-9 * Math.max(1, Math.abs(first), Math.abs(second));
+}
+
+function existingEffectivePrices(entry) {
+  const multiplier = entry?.useMultiplier ? finiteNumber(entry.multiplier, 1) : 1;
+  return {
+    input: finiteNumber(entry?.baseInputPrice, 0) * multiplier,
+    cache: finiteNumber(entry?.baseCacheInputPrice, 0) * multiplier,
+    output: finiteNumber(entry?.baseOutputPrice, 0) * multiplier
+  };
+}
+
+function effectivePricesMatch(left, right) {
+  return nearlyEqual(left.input, right.input)
+    && nearlyEqual(left.cache, right.cache)
+    && nearlyEqual(left.output, right.output);
+}
+
+function effectivePriceDistance(left, right) {
+  const distance = (first, second) => Math.abs(first - second) / Math.max(1, Math.abs(first), Math.abs(second));
+  return distance(left.input, right.input)
+    + distance(left.cache, right.cache)
+    + distance(left.output, right.output);
+}
+
 export function mergeCatalogIntoSnapshot({
   snapshot,
   catalog,
@@ -606,7 +646,11 @@ export function mergeCatalogIntoSnapshot({
   if (!catalog || !Array.isArray(catalog.models)) throw new RatioFetchError('抓取结果格式无效');
   const providerName = cleanString(provider) || new URL(catalog.baseUrl).hostname;
   const fixedCategoryName = cleanString(fixedCategory) || `${providerName} 自动抓取`;
-  const selected = new Set(Array.isArray(selectedModels) ? selectedModels : []);
+  const selected = new Set(
+    (Array.isArray(selectedModels) ? selectedModels : [])
+      .map(modelIdentity)
+      .filter(Boolean)
+  );
   const groupRatio = positiveNumber(catalog.groupRatio?.[group], 1);
   const normalizedCreditPerCny = positiveNumber(creditPerCny, 1);
   const cnyPerUsdCredit = positiveNumber(exchangeRate, 1 / normalizedCreditPerCny);
@@ -614,10 +658,13 @@ export function mergeCatalogIntoSnapshot({
   const nextEntries = snapshot.entries.map(entry => ({ ...entry }));
   let added = 0;
   let updated = 0;
+  let unchanged = 0;
   let skipped = 0;
+  const changes = [];
 
   for (const model of catalog.models) {
-    if (!selected.has(model.modelName)) continue;
+    const identity = modelIdentity(model.modelName);
+    if (!identity || !selected.has(identity)) continue;
     if (model.billingType !== 'tokens') {
       skipped += 1;
       continue;
@@ -627,9 +674,10 @@ export function mergeCatalogIntoSnapshot({
       continue;
     }
     const prices = calculateModelPrices(model, cnyPerUsdCredit, groupRatio);
-    const category = categoryMode === 'fixed' ? fixedCategoryName : classifyModel(model.modelName);
+    const canonicalName = canonicalTrackedModelName(model.modelName);
+    const category = categoryMode === 'fixed' ? fixedCategoryName : classifyModel(canonicalName);
     const entryData = {
-      modelName: model.modelName,
+      modelName: canonicalName,
       category,
       provider: providerName,
       relayAddress: catalog.baseUrl,
@@ -640,28 +688,67 @@ export function mergeCatalogIntoSnapshot({
       baseOutputPrice: prices.baseOutputPrice,
       updatedAt: now
     };
-    const index = nextEntries.findIndex(entry =>
-      cleanString(entry.modelName).toLowerCase() === model.modelName.toLowerCase()
-      && sameSite(entry.relayAddress, catalog.baseUrl)
+    const nextEffectivePrices = {
+      input: prices.actualInputPrice,
+      cache: prices.actualCacheInputPrice,
+      output: prices.actualOutputPrice
+    };
+    const candidates = nextEntries.map((entry, index) => ({
+      entry,
+      index,
+      effectivePrices: existingEffectivePrices(entry)
+    })).filter(candidate =>
+      modelIdentity(candidate.entry.modelName) === identity
+      && sameSite(candidate.entry.relayAddress, catalog.baseUrl)
     );
-    if (index >= 0) {
-      nextEntries[index] = { ...nextEntries[index], ...entryData };
+    if (candidates.some(candidate => effectivePricesMatch(candidate.effectivePrices, nextEffectivePrices))) {
+      unchanged += 1;
+    } else if (candidates.length > 0) {
+      const candidate = candidates.sort((left, right) =>
+        effectivePriceDistance(left.effectivePrices, nextEffectivePrices)
+        - effectivePriceDistance(right.effectivePrices, nextEffectivePrices)
+      )[0];
+      nextEntries[candidate.index] = {
+        ...candidate.entry,
+        useMultiplier: entryData.useMultiplier,
+        multiplier: entryData.multiplier,
+        baseInputPrice: entryData.baseInputPrice,
+        baseCacheInputPrice: entryData.baseCacheInputPrice,
+        baseOutputPrice: entryData.baseOutputPrice,
+        updatedAt: entryData.updatedAt
+      };
+      changes.push({
+        type: 'updated',
+        provider: candidate.entry.provider || providerName,
+        modelName: candidate.entry.modelName,
+        before: candidate.effectivePrices,
+        after: nextEffectivePrices
+      });
       updated += 1;
     } else {
       nextEntries.push({ id: `${now}-${added}-${Math.random().toString(36).slice(2, 10)}`, ...entryData, createdAt: now });
+      changes.push({
+        type: 'added',
+        provider: providerName,
+        modelName: canonicalName,
+        before: null,
+        after: nextEffectivePrices
+      });
       added += 1;
     }
   }
 
   return {
     snapshot: {
-      exportedAt: new Date().toISOString(),
-      version: 2,
+      exportedAt: added + updated > 0 ? new Date().toISOString() : snapshot.exportedAt,
+      version: snapshot.version || 2,
       entries: nextEntries
     },
     added,
     updated,
+    unchanged,
     skipped,
+    changes,
     selected: selected.size
   };
 }

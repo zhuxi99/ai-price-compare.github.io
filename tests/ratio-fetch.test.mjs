@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -8,8 +8,10 @@ import { fileURLToPath } from 'node:url';
 import {
   buildAccessHeaders,
   calculateModelPrices,
+  canonicalTrackedModelName,
   classifyModel,
   fetchRatioCatalog,
+  filterTrackedModels,
   mergeCatalogIntoSnapshot,
   normalizeSiteUrl
 } from '../scripts/ratio-fetch-core.mjs';
@@ -30,6 +32,28 @@ test('local fetch UI hides models unavailable in the selected group', async () =
   assert.match(page, /\.filter\(\(\{ result, model \}\) => isAvailable\(result, model\)\)\s*\.filter\(/);
   assert.doesNotMatch(page, />分组不可用</);
   assert.match(page, /当前分组可用 \$\{availableModels\} 个/);
+  assert.match(page, /formatNumber\(change\.after\.input, 8\)/);
+  assert.match(page, /formatNumber\(change\.after\.cache, 8\)/);
+});
+
+test('canonicalizes only exact tracked model names and rejects explanatory suffixes', () => {
+  assert.equal(canonicalTrackedModelName('GPT 5.6 sol'), 'GPT 5.6 sol');
+  assert.equal(canonicalTrackedModelName('gpt-5.6-sol'), 'GPT 5.6 sol');
+  assert.equal(canonicalTrackedModelName('Claude Fable 5'), 'Claude Fable 5');
+  assert.equal(canonicalTrackedModelName('claude-fable-5'), 'Claude Fable 5');
+  assert.equal(canonicalTrackedModelName('GPT 5.6 sol plus'), '');
+  assert.equal(canonicalTrackedModelName('GPT 5.6 sol 价格稳定'), '');
+  assert.equal(canonicalTrackedModelName('Claude Fable 5（非1M）'), '');
+
+  const filtered = filterTrackedModels({ models: [
+    { modelName: 'gpt-5.6-sol' },
+    { modelName: 'GPT 5.6 sol' },
+    { modelName: 'GPT 5.6 sol plus' },
+    { modelName: 'claude-fable-5' }
+  ] });
+  assert.deepEqual(filtered.models.map(model => model.modelName), [
+    'Claude Fable 5', 'GPT 5.6 sol'
+  ]);
 });
 
 test('normalizes site URLs and builds compatible access-token headers', () => {
@@ -242,7 +266,7 @@ test('merges selected models without persisting access tokens', () => {
     exportedAt: '2026-07-17T00:00:00.000Z',
     version: 2,
     entries: [{
-      id: 'old', modelName: 'gpt-5-test', category: '旧分类', provider: '旧名称',
+      id: 'old', modelName: 'GPT 5.6 sol', category: '旧分类', provider: '旧名称',
       relayAddress: 'https://relay.example/register', useMultiplier: false, multiplier: null,
       baseInputPrice: 1, baseCacheInputPrice: 1, baseOutputPrice: 1, createdAt: 1, updatedAt: 1
     }]
@@ -253,21 +277,161 @@ test('merges selected models without persisting access tokens', () => {
     groupRatio: { default: 0.8 },
     usableGroup: { default: '默认' },
     models: [{
-      modelName: 'gpt-5-test', billingType: 'tokens', modelRatio: 1.25,
+      modelName: 'gpt-5.6-sol', billingType: 'tokens', modelRatio: 1.25,
       completionRatio: 4, cacheRatio: null, directInputUsd: null,
       directOutputUsd: null, directCacheUsd: null, enableGroups: ['default']
     }]
   };
   const result = mergeCatalogIntoSnapshot({
-    snapshot, catalog, selectedModels: ['gpt-5-test'], group: 'default',
+    snapshot, catalog, selectedModels: ['GPT 5.6 sol'], group: 'default',
     exchangeRate: 7.2, provider: '测试站', categoryMode: 'auto'
   });
   assert.equal(result.added, 0);
   assert.equal(result.updated, 1);
-  assert.equal(result.snapshot.entries[0].category, 'GPT / OpenAI');
+  assert.equal(result.snapshot.entries[0].category, '旧分类');
+  assert.equal(result.snapshot.entries[0].provider, '旧名称');
+  assert.equal(result.snapshot.entries[0].relayAddress, 'https://relay.example/register');
   assert.equal(result.snapshot.entries[0].multiplier, 0.8);
   assert.equal(result.snapshot.entries[0].baseInputPrice, 18);
   assert.doesNotMatch(JSON.stringify(result.snapshot), /token|secret|authorization/i);
+});
+
+test('matches canonical model aliases and only updates effective price changes', () => {
+  const snapshot = {
+    exportedAt: '2026-07-17T00:00:00.000Z', version: 2,
+    entries: [{
+      id: 'existing', modelName: 'GPT 5.6 sol', category: '人工分类', provider: '原站名',
+      relayAddress: 'https://same.example/register?aff=keep', useMultiplier: true,
+      multiplier: 0.5, baseInputPrice: 10, baseCacheInputPrice: 10,
+      baseOutputPrice: 60, createdAt: 1, updatedAt: 2
+    }]
+  };
+  const catalog = {
+    baseUrl: 'https://same.example', groupRatio: { default: 1 }, usableGroup: { default: '默认' },
+    models: [{
+      modelName: 'gpt-5.6-sol', billingType: 'tokens', modelRatio: 2.5,
+      completionRatio: 6, cacheRatio: 1, directInputUsd: null,
+      directOutputUsd: null, directCacheUsd: null, enableGroups: []
+    }]
+  };
+  const unchanged = mergeCatalogIntoSnapshot({
+    snapshot, catalog, selectedModels: ['gpt-5.6-sol'], group: 'default',
+    exchangeRate: 1, provider: '新站名'
+  });
+  assert.equal(unchanged.added, 0);
+  assert.equal(unchanged.updated, 0);
+  assert.equal(unchanged.unchanged, 1);
+  assert.deepEqual(unchanged.changes, []);
+  assert.deepEqual(unchanged.snapshot.entries[0], snapshot.entries[0]);
+
+  catalog.groupRatio.default = 0.8;
+  const changed = mergeCatalogIntoSnapshot({
+    snapshot, catalog, selectedModels: ['gpt-5.6-sol'], group: 'default',
+    exchangeRate: 1, provider: '新站名'
+  });
+  assert.equal(changed.added, 0);
+  assert.equal(changed.updated, 1);
+  assert.equal(changed.unchanged, 0);
+  assert.equal(changed.changes.length, 1);
+  assert.equal(changed.changes[0].type, 'updated');
+  assert.equal(changed.changes[0].before.output, 30);
+  assert.equal(changed.changes[0].after.output, 24);
+  assert.equal(changed.snapshot.entries[0].modelName, 'GPT 5.6 sol');
+  assert.equal(changed.snapshot.entries[0].provider, '原站名');
+  assert.equal(changed.snapshot.entries[0].relayAddress, 'https://same.example/register?aff=keep');
+  assert.equal(changed.snapshot.entries[0].updatedAt > 2, true);
+});
+
+test('merge rejects non-target models even when a save request selects them directly', () => {
+  const snapshot = { exportedAt: '2026-07-17T00:00:00.000Z', version: 2, entries: [] };
+  const result = mergeCatalogIntoSnapshot({
+    snapshot,
+    catalog: {
+      baseUrl: 'https://strict.example', groupRatio: { default: 1 }, usableGroup: { default: '默认' },
+      models: [{
+        modelName: 'GPT 5.6 sol plus', billingType: 'tokens', modelRatio: 1,
+        completionRatio: 2, cacheRatio: 1, directInputUsd: null,
+        directOutputUsd: null, directCacheUsd: null, enableGroups: []
+      }]
+    },
+    selectedModels: ['GPT 5.6 sol plus'], group: 'default', exchangeRate: 1,
+    provider: '测试站'
+  });
+
+  assert.equal(result.selected, 0);
+  assert.equal(result.added, 0);
+  assert.equal(result.updated, 0);
+  assert.deepEqual(result.snapshot.entries, []);
+});
+
+test('detects small but real effective price changes', () => {
+  const snapshot = {
+    exportedAt: '2026-07-17T00:00:00.000Z', version: 2,
+    entries: [{
+      id: 'small-price', modelName: 'Claude Fable 5', category: 'Claude', provider: '测试站',
+      relayAddress: 'https://small.example', useMultiplier: true, multiplier: 1,
+      baseInputPrice: 0.00005, baseCacheInputPrice: 0.00005,
+      baseOutputPrice: 0.00005, createdAt: 1, updatedAt: 2
+    }]
+  };
+  const result = mergeCatalogIntoSnapshot({
+    snapshot,
+    catalog: {
+      baseUrl: 'https://small.example', groupRatio: { default: 1 }, usableGroup: { default: '默认' },
+      models: [{
+        modelName: 'claude-fable-5', billingType: 'tokens', modelRatio: 0,
+        completionRatio: 1, cacheRatio: 1, directInputUsd: 0.00014,
+        directOutputUsd: 0.00014, directCacheUsd: 0.00014, enableGroups: []
+      }]
+    },
+    selectedModels: ['Claude Fable 5'], group: 'default', exchangeRate: 1,
+    provider: '测试站'
+  });
+
+  assert.equal(result.updated, 1);
+  assert.equal(result.unchanged, 0);
+  assert.equal(result.changes[0].before.input, 0.00005);
+  assert.equal(result.changes[0].after.input, 0.00014);
+});
+
+test('keeps duplicate price tiers unchanged when any matching tier has the fetched price', () => {
+  const snapshot = {
+    exportedAt: '2026-07-17T00:00:00.000Z', version: 2,
+    entries: [
+      {
+        id: 'tier-one', modelName: 'GPT 5.6 sol', category: '人工分类', provider: '测试站',
+        relayAddress: 'https://tiers.example/register', useMultiplier: true,
+        multiplier: 1, baseInputPrice: 4, baseCacheInputPrice: 4,
+        baseOutputPrice: 24, createdAt: 1, updatedAt: 2
+      },
+      {
+        id: 'tier-two', modelName: 'gpt-5.6-sol', category: '人工分类', provider: '测试站',
+        relayAddress: 'https://tiers.example/register', useMultiplier: true,
+        multiplier: 1, baseInputPrice: 5, baseCacheInputPrice: 5,
+        baseOutputPrice: 30, createdAt: 3, updatedAt: 4
+      }
+    ]
+  };
+  const catalog = {
+    baseUrl: 'https://tiers.example', groupRatio: { default: 1 }, usableGroup: { default: '默认' },
+    models: [{
+      modelName: 'gpt-5.6-sol', billingType: 'tokens', modelRatio: 2.5,
+      completionRatio: 6, cacheRatio: 1, directInputUsd: null,
+      directOutputUsd: null, directCacheUsd: null, enableGroups: []
+    }]
+  };
+
+  const result = mergeCatalogIntoSnapshot({
+    snapshot, catalog, selectedModels: ['GPT 5.6 sol'], group: 'default',
+    exchangeRate: 1, provider: '测试站'
+  });
+
+  assert.equal(result.added, 0);
+  assert.equal(result.updated, 0);
+  assert.equal(result.unchanged, 1);
+  assert.deepEqual(result.changes, []);
+  assert.deepEqual(result.snapshot.entries, snapshot.entries);
+  assert.equal(result.snapshot.exportedAt, snapshot.exportedAt);
 });
 
 test('applies each site recharge credit ratio to the effective CNY price', () => {
@@ -276,13 +440,13 @@ test('applies each site recharge credit ratio to the effective CNY price', () =>
     baseUrl: 'https://bonus.example', sourceType: 'new-api',
     groupRatio: { default: 0.5 }, usableGroup: { default: '默认' },
     models: [{
-      modelName: 'gpt-bonus', billingType: 'tokens', modelRatio: 2.5,
+      modelName: 'gpt-5.6-sol', billingType: 'tokens', modelRatio: 2.5,
       completionRatio: 4, cacheRatio: null, directInputUsd: null,
       directOutputUsd: null, directCacheUsd: null, enableGroups: ['default']
     }]
   };
   const result = mergeCatalogIntoSnapshot({
-    snapshot, catalog, selectedModels: ['gpt-bonus'], group: 'default',
+    snapshot, catalog, selectedModels: ['GPT 5.6 sol'], group: 'default',
     provider: '充值赠送站', creditPerCny: 10, categoryMode: 'auto'
   });
   const [entry] = result.snapshot.entries;
@@ -300,7 +464,7 @@ test('local ratio server keeps the token out of its response and rejects foreign
       assert.equal(new URL(url).pathname, '/api/pricing');
       return jsonResponse({
         success: true,
-        data: [{ model_name: 'gpt-5.6-sol-local', quota_type: 0, model_ratio: 1, completion_ratio: 2, enable_groups: [] }],
+        data: [{ model_name: 'gpt-5.6-sol', quota_type: 0, model_ratio: 1, completion_ratio: 2, enable_groups: [] }],
         group_ratio: { default: 1 },
         usable_group: { default: '默认' }
       });
@@ -431,7 +595,7 @@ test('batch fetching uses each saved site token without returning either secret'
       received.set(parsed.hostname, options.headers.Authorization);
       return jsonResponse({
         success: true,
-        data: [{ model_name: `gpt-5.6-sol-${parsed.hostname}`, quota_type: 0, model_ratio: 1, completion_ratio: 2, enable_groups: [] }],
+        data: [{ model_name: 'gpt-5.6-sol', quota_type: 0, model_ratio: 1, completion_ratio: 2, enable_groups: [] }],
         group_ratio: { default: 1 },
         usable_group: { default: '默认' }
       });
@@ -502,8 +666,52 @@ test('local fetch server only returns GPT 5.6 sol and Claude Fable 5 variants', 
   assert.equal(response.status, 200);
   assert.equal(body.results[0].ok, true);
   assert.deepEqual(body.results[0].catalog.models.map(model => model.modelName), [
-    'claude-fable-5', 'gpt-5.6-sol'
+    'Claude Fable 5', 'GPT 5.6 sol'
   ]);
+});
+
+test('does not write a new snapshot file when every selected price is unchanged', async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'ai-price-no-change-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const snapshot = {
+    exportedAt: '2026-07-17T00:00:00.000Z', version: 2,
+    entries: [{
+      id: 'same', modelName: 'GPT 5.6 sol', category: 'GPT / OpenAI', provider: '测试站',
+      relayAddress: 'https://same.example/register', useMultiplier: true, multiplier: 1,
+      baseInputPrice: 5, baseCacheInputPrice: 5, baseOutputPrice: 30,
+      createdAt: 1, updatedAt: 2
+    }]
+  };
+  const app = createRatioFetchServer({
+    snapshotResolver: async () => ({ filePath: path.join(directory, 'source.json'), snapshot, directory })
+  });
+  const origin = await app.listen();
+  t.after(() => app.close());
+  const response = await fetch(`${origin}/api/save-batch-snapshot`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items: [{
+      catalog: {
+        baseUrl: 'https://same.example', groupRatio: { default: 1 }, usableGroup: { default: '默认' },
+        models: [{
+          modelName: 'gpt-5.6-sol', billingType: 'tokens', modelRatio: 2.5,
+          completionRatio: 6, cacheRatio: 1, directInputUsd: null,
+          directOutputUsd: null, directCacheUsd: null, enableGroups: []
+        }]
+      },
+      selectedModels: ['gpt-5.6-sol'], group: 'default', exchangeRate: 1,
+      creditPerCny: 1, provider: '测试站', categoryMode: 'auto'
+    }] })
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.outputName, null);
+  assert.equal(body.updated, 0);
+  assert.equal(body.added, 0);
+  assert.equal(body.unchanged, 1);
+  assert.deepEqual(body.changes, []);
+  assert.deepEqual(await readdir(directory), []);
 });
 
 test('batch fetching separates sites waiting for a login token from real failures', async t => {

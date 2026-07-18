@@ -283,16 +283,23 @@ export function createRatioFetchServer({
           categoryMode: body.categoryMode,
           fixedCategory: body.fixedCategory
         });
-        const outputPath = path.join(latest.directory, `ai-price-data-${safeFileTimestamp()}.json`);
-        await mkdir(latest.directory, { recursive: true });
-        await writeFile(outputPath, `${JSON.stringify(result.snapshot, null, 2)}\n`, { mode: 0o600 });
+        const hasChanges = result.added + result.updated > 0;
+        const outputPath = hasChanges
+          ? path.join(latest.directory, `ai-price-data-${safeFileTimestamp()}.json`)
+          : null;
+        if (outputPath) {
+          await mkdir(latest.directory, { recursive: true });
+          await writeFile(outputPath, `${JSON.stringify(result.snapshot, null, 2)}\n`, { mode: 0o600 });
+        }
         return jsonResponse(response, 200, {
           ok: true,
-          outputName: path.basename(outputPath),
+          outputName: outputPath ? path.basename(outputPath) : null,
           entryCount: result.snapshot.entries.length,
           added: result.added,
           updated: result.updated,
+          unchanged: result.unchanged,
           skipped: result.skipped,
+          changes: result.changes,
           selected: result.selected
         });
       }
@@ -304,7 +311,8 @@ export function createRatioFetchServer({
         if (items.length > 50) throw new RatioFetchError('单次最多合并 50 个站点');
         const latest = await snapshotResolver();
         let snapshot = latest.snapshot;
-        const totals = { added: 0, updated: 0, skipped: 0, selected: 0 };
+        const totals = { added: 0, updated: 0, unchanged: 0, skipped: 0, selected: 0 };
+        const changes = [];
         for (const item of items) {
           const result = mergeCatalogIntoSnapshot({
             snapshot,
@@ -319,14 +327,21 @@ export function createRatioFetchServer({
           });
           snapshot = result.snapshot;
           for (const key of Object.keys(totals)) totals[key] += result[key];
+          changes.push(...result.changes);
         }
-        const outputPath = path.join(latest.directory, `ai-price-data-${safeFileTimestamp()}.json`);
-        await mkdir(latest.directory, { recursive: true });
-        await writeFile(outputPath, `${JSON.stringify(snapshot, null, 2)}\n`, { mode: 0o600 });
+        const hasChanges = totals.added + totals.updated > 0;
+        const outputPath = hasChanges
+          ? path.join(latest.directory, `ai-price-data-${safeFileTimestamp()}.json`)
+          : null;
+        if (outputPath) {
+          await mkdir(latest.directory, { recursive: true });
+          await writeFile(outputPath, `${JSON.stringify(snapshot, null, 2)}\n`, { mode: 0o600 });
+        }
         return jsonResponse(response, 200, {
           ok: true,
-          outputName: path.basename(outputPath),
+          outputName: outputPath ? path.basename(outputPath) : null,
           entryCount: snapshot.entries.length,
+          changes,
           ...totals
         });
       }
